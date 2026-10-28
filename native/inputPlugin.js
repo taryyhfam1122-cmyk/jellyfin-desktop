@@ -15,6 +15,7 @@ const remap = {
 
 class inputPlugin {
     constructor({ inputManager, playbackManager }) {
+        window.jfdMouseControls?.setManager(playbackManager);
         this.name = 'Input Plugin';
         this.type = 'input';
         this.id = 'inputPlugin';

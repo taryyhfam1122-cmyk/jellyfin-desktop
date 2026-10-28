@@ -242,6 +242,7 @@
         }
 
         async play(options) {
+            window.jfdMouseControls?.setPlayer(this);
             this._started = false;
             this._timeUpdated = false;
             this._currentTime = null;
@@ -446,6 +447,8 @@
         }
 
         onEndedInternal() {
+            if (!this._currentSrc) return;
+            window.jfdMouseControls?.ended(this);
             const stopInfo = {
                 src: this._currentSrc
             };

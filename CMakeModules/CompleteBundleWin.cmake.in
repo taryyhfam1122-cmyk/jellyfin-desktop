@@ -5,7 +5,7 @@ message(STATUS "Running windeployqt from: ${QTROOT}/bin/windeployqt.exe")
 message(STATUS "Target: ${CMAKE_INSTALL_PREFIX}/Jellyfin Desktop.exe")
 
 execute_process(
-  COMMAND "${QTROOT}/bin/windeployqt.exe" --verbose 9 --qmldir @SOURCE_ROOT@/src/ui "${CMAKE_INSTALL_PREFIX}/Jellyfin Desktop.exe"
+  COMMAND "${QTROOT}/bin/windeployqt.exe" --release --verbose 9 --qmldir "@PROJECT_SOURCE_DIR@/src/ui" "${CMAKE_INSTALL_PREFIX}/Jellyfin Desktop.exe"
   RESULT_VARIABLE WINDEPLOYQT_RESULT
 )
 
