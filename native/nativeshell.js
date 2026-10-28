@@ -592,144 +592,232 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         }
     }
 });
-// ChatGPT Jellyfin Desktop Mouse-Only controls - prototype v0.1
-// Intended to be appended to upstream native/nativeshell.js and compiled into
-// a custom Jellyfin Desktop build.  This does NOT run in stock Jellyfin Desktop.
-// Uses Jellyfin Desktop's own mpvVideoPlayer so stop/seek pass through the client.
-// BEGIN CHATGPT_JFD_MOUSECONTROLS_V01
+// ChatGPT Jellyfin Desktop Mouse-Only controls - diagnostic prototype v0.2
+// REPLACES the entire old v0.1 block at the end of native/nativeshell.js.
+// BEGIN CHATGPT_JFD_MOUSECONTROLS_V02
 (function () {
     'use strict';
-    if (window.__chatgptDesktopMouseControls) return;
-    window.__chatgptDesktopMouseControls = true;
+    if (window.__chatgptDesktopMouseV02) return;
+    window.__chatgptDesktopMouseV02 = true;
 
-    const SMALL_SECONDS_PER_100PX = 15;
-    const LARGE_SECONDS_PER_100PX = 90;
-    const START_DRAG_PX = 12;
-    const UPDATE_MS = 85;
-    const SAFE_TOP = 0.075;
-    const SAFE_BOTTOM = 0.80;
-    let active = null;
-    let swallowClick = false;
-    let indicator = null;
-    let indicatorTimer = null;
+    const SMALL_MS_PER_PX = 150;  // 15 seconds per 100px
+    const LARGE_MS_PER_PX = 900;  // 90 seconds per 100px
+    const DRAG_THRESHOLD_PX = 10;
+    const UPDATE_INTERVAL_MS = 85;
+    const DEBUG_LIMIT = 35;
+    let diagnosticCount = 0;
+    let activeDrag = null;
+    let suppressClick = false;
+    let statusBox = null;
+    let statusTimer = null;
+    let lastPointerDown = -1e9;
+    let lastPointerMove = -1e9;
+    let lastPointerUp = -1e9;
 
-    function current() {
+    function diagnostic(message, details) {
+        if (diagnosticCount++ >= DEBUG_LIMIT) return;
+        console.info('[JFD Mouse v0.2] ' + message + (details ? ' ' + JSON.stringify(details) : ''));
+    }
+
+    function getPlayerContext() {
         const manager = window.playbackManager;
         const player = manager && manager._currentPlayer;
-        if (!player || player.id !== 'mpvvideoplayer' || !player._currentSrc || !player._started) return null;
-        if (typeof player.currentTime !== 'function' || typeof player.duration !== 'function') return null;
-        const duration = Number(player.duration());
-        if (!Number.isFinite(duration) || duration <= 0) return null;
-        return {manager, player, duration};
+        if (!player || player.id !== 'mpvvideoplayer') return {reject: 'mpv-player-not-selected'};
+        if (typeof player.currentTime !== 'function') return {reject: 'currentTime-unavailable'};
+
+        const durationCandidates = [
+            typeof player.duration === 'function' ? Number(player.duration()) : NaN,
+            typeof manager.duration === 'function' ? Number(manager.duration(player)) : NaN
+        ];
+        const duration = durationCandidates.find(x => Number.isFinite(x) && x > 0);
+        if (!duration) return {reject: 'duration-not-ready'};
+
+        const now = Number(player.currentTime());
+        return {
+            manager: manager,
+            player: player,
+            duration: duration,
+            position: Number.isFinite(now) && now >= 0 ? now : 0
+        };
     }
 
-    function safeArea(e) {
-        const h = window.innerHeight || 1;
-        const w = window.innerWidth || 1;
-        if (e.clientX < 0 || e.clientX > w || e.clientY < h * SAFE_TOP || e.clientY > h * SAFE_BOTTOM) return false;
-        if (!document.querySelector('.videoPlayerContainer')) return false;
-        const el = e.target && e.target.nodeType === 1 ? e.target : null;
-        if (el && el.closest('button,a,input,textarea,select,[role="button"],[role="slider"],.sliderContainer,.mdl-slider,.videoOsdBottom,.videoOsdTop')) return false;
-        return true;
-    }
-
-    function fmt(ms) {
-        const s = Math.round(Math.max(0, ms) / 1000);
-        const m = Math.floor(s / 60);
-        const seconds = String(s % 60).padStart(2, '0');
-        return s >= 3600 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2,'0')}:${seconds}` : `${m}:${seconds}`;
-    }
-
-    function show(target, duration, delta) {
-        if (!document.body) return;
-        if (!indicator) {
-            indicator = document.createElement('div');
-            indicator.id = 'chatgpt-jfd-seek-osd';
-            indicator.style.cssText = 'position:fixed;top:10%;left:50%;transform:translateX(-50%);z-index:2147483647;pointer-events:none;white-space:pre;text-align:center;background:rgba(0,0,0,.7);color:#fff;border-radius:8px;padding:10px 16px;font:600 16px sans-serif;';
+    function allowedArea(e) {
+        const node = e.target && e.target.nodeType === 1 ? e.target : null;
+        if (!node) return 'missing-dom-target';
+        if (node.closest('button, a, input, textarea, select, [role="button"], [role="slider"], .sliderContainer, .mdl-slider')) {
+            return 'interactive-control';
         }
-        if (!indicator.isConnected) document.body.appendChild(indicator);
-        indicator.textContent = `${delta >= 0 ? '+' : '-'}${fmt(Math.abs(delta))}     ${fmt(target)} / ${fmt(duration)}`;
-        indicator.style.display = 'block';
-        clearTimeout(indicatorTimer);
-        indicatorTimer = setTimeout(() => { if (indicator) indicator.style.display = 'none'; }, 1100);
+        const height = Math.max(1, window.innerHeight || 1);
+        // Exclude the top navigation and bottom seek bar, but do NOT exclude
+        // whole video OSD containers (they can cover the entire viewport).
+        if (e.clientY < height * 0.07 || e.clientY > height * 0.87) return 'osd-edge-area';
+        return null;
     }
 
-    function clamp(v, max) { return Math.max(0, Math.min(Math.max(0, max - 500), v)); }
-    function reset() { active = null; }
+    function asClock(milliseconds) {
+        const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = String(seconds % 60).padStart(2, '0');
+        return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+    }
 
-    document.addEventListener('mousedown', e => {
-        if (![0, 1, 2].includes(e.button) || !safeArea(e)) return;
-        const ctx = current();
-        if (!ctx) return;
-        if (e.button === 1) {
-            e.preventDefault(); e.stopImmediatePropagation();
-            reset();
-            // Important: stop through jellyfin-web playbackManager, not mpv.stop(),
-            // to retain client playback-stop reporting and progress handling.
-            try { ctx.manager.stop(); } catch (ex) { console.error('[JFD Mouse] stop failed', ex); }
+    function showSeek(target, duration, change) {
+        if (!document.body) return;
+        if (!statusBox) {
+            statusBox = document.createElement('div');
+            statusBox.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;top:12%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.72);color:white;border-radius:8px;padding:8px 14px;font:600 15px sans-serif;white-space:pre';
+        }
+        if (!statusBox.isConnected) document.body.appendChild(statusBox);
+        statusBox.textContent = `${change >= 0 ? '+' : '-'}${asClock(Math.abs(change))}   ${asClock(target)} / ${asClock(duration)}`;
+        statusBox.style.display = 'block';
+        clearTimeout(statusTimer);
+        statusTimer = setTimeout(() => { if (statusBox) statusBox.style.display = 'none'; }, 900);
+    }
+
+    function resetDrag() { activeDrag = null; }
+
+    function pointerDown(e) {
+        if (e.pointerType && e.pointerType !== 'mouse') return;
+        if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+        const ctx = getPlayerContext();
+        const reason = allowedArea(e);
+        if (ctx.reject || reason) {
+            diagnostic('down rejected', {
+                button: e.button,
+                reason: ctx.reject || reason,
+                target: e.target && e.target.tagName,
+                videoContainer: Boolean(document.querySelector('.videoPlayerContainer'))
+            });
             return;
         }
-        active = {
-            button: e.button, player: ctx.player, duration: ctx.duration,
-            x0: e.clientX, start: Number(ctx.player.currentTime()) || 0,
-            target: 0, dragging: false, last: 0
+        diagnostic('down accepted', {button: e.button, durationMs: Math.round(ctx.duration)});
+        if (e.button === 1) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            resetDrag();
+            try {
+                if (typeof ctx.manager.stop === 'function') ctx.manager.stop();
+                else diagnostic('stop not available');
+            } catch (error) {
+                console.error('[JFD Mouse v0.2] Stop error', error);
+            }
+            return;
+        }
+        activeDrag = {
+            button: e.button,
+            x0: e.clientX,
+            startMs: ctx.position,
+            targetMs: ctx.position,
+            durationMs: ctx.duration,
+            player: ctx.player,
+            lastUpdate: -1e9,
+            dragging: false
         };
-        active.target = active.start;
         if (e.button === 2) e.preventDefault();
-    }, true);
+    }
 
-    document.addEventListener('mousemove', e => {
-        const s = active;
-        if (!s) return;
-        // A release outside the document must not leave the drag stuck.
-        const mask = s.button === 0 ? 1 : 2;
-        if ((e.buttons & mask) === 0) { reset(); return; }
-        const dx = e.clientX - s.x0;
-        if (!s.dragging && Math.abs(dx) < START_DRAG_PX) return;
-        s.dragging = true;
-        e.preventDefault(); e.stopImmediatePropagation();
-        const secPer100 = s.button === 0 ? SMALL_SECONDS_PER_100PX : LARGE_SECONDS_PER_100PX;
-        s.target = clamp(s.start + dx * secPer100 * 10, s.duration);
+    function pointerMove(e) {
+        if (e.pointerType && e.pointerType !== 'mouse') return;
+        const state = activeDrag;
+        if (!state) return;
+        const bit = state.button === 0 ? 1 : 2;
+        if ((e.buttons & bit) === 0) { resetDrag(); return; }
+        const dx = e.clientX - state.x0;
+        if (!state.dragging && Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+        if (!state.dragging) {
+            state.dragging = true;
+            diagnostic('drag started', {button: state.button, dx: dx});
+        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const rate = state.button === 0 ? SMALL_MS_PER_PX : LARGE_MS_PER_PX;
+        state.targetMs = Math.max(0, Math.min(state.durationMs - 500, state.startMs + dx * rate));
         const now = performance.now();
-        if (now - s.last >= UPDATE_MS) {
-            s.last = now;
-            s.player.currentTime(s.target);
-            show(s.target, s.duration, s.target - s.start);
+        if (now - state.lastUpdate >= UPDATE_INTERVAL_MS) {
+            state.lastUpdate = now;
+            state.player.currentTime(state.targetMs);
+            showSeek(state.targetMs, state.durationMs, state.targetMs - state.startMs);
         }
+    }
+
+    function pointerUp(e) {
+        if (e.pointerType && e.pointerType !== 'mouse') return;
+        const state = activeDrag;
+        if (!state || e.button !== state.button) return;
+        if (state.dragging) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            state.player.currentTime(state.targetMs);
+            showSeek(state.targetMs, state.durationMs, state.targetMs - state.startMs);
+            suppressClick = true;
+            setTimeout(() => { suppressClick = false; }, 240);
+            diagnostic('drag completed', {button: state.button, deltaMs: Math.round(state.targetMs - state.startMs)});
+        } else if (state.button === 2) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            try {
+                if (state.player.paused()) state.player.unpause();
+                else state.player.pause();
+                diagnostic('right-click pause toggled');
+            } catch (error) { console.error('[JFD Mouse v0.2] Pause error', error); }
+        }
+        resetDrag();
+    }
+
+    // QtWebEngine delivers pointer events to most pages; keep mouse fallback.
+    window.addEventListener('pointerdown', e => {
+        lastPointerDown = performance.now();
+        pointerDown(e);
+    }, true);
+    window.addEventListener('pointermove', e => {
+        lastPointerMove = performance.now();
+        pointerMove(e);
+    }, true);
+    window.addEventListener('pointerup', e => {
+        lastPointerUp = performance.now();
+        pointerUp(e);
+    }, true);
+    window.addEventListener('pointercancel', resetDrag, true);
+
+    window.addEventListener('mousedown', e => {
+        if (performance.now() - lastPointerDown < 40) return;
+        pointerDown(e);
+    }, true);
+    window.addEventListener('mousemove', e => {
+        if (performance.now() - lastPointerMove < 40) return;
+        pointerMove(e);
+    }, true);
+    window.addEventListener('mouseup', e => {
+        if (performance.now() - lastPointerUp < 40) return;
+        pointerUp(e);
     }, true);
 
-    document.addEventListener('mouseup', e => {
-        const s = active;
-        if (!s || e.button !== s.button) return;
-        if (s.dragging) {
-            e.preventDefault(); e.stopImmediatePropagation();
-            s.player.currentTime(s.target);
-            show(s.target, s.duration, s.target - s.start);
-            swallowClick = true;
-            setTimeout(() => { swallowClick = false; }, 200);
-        } else if (s.button === 2) {
-            e.preventDefault(); e.stopImmediatePropagation();
-            if (typeof s.player.paused === 'function' && s.player.paused()) s.player.unpause();
-            else s.player.pause();
+    window.addEventListener('click', e => {
+        if (suppressClick) {
+            suppressClick = false;
+            e.preventDefault();
+            e.stopImmediatePropagation();
         }
-        reset();
     }, true);
-
-    document.addEventListener('click', e => {
-        if (swallowClick) { e.preventDefault(); e.stopImmediatePropagation(); swallowClick = false; }
+    window.addEventListener('contextmenu', e => {
+        if (getPlayerContext().player && !allowedArea(e)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
     }, true);
-    document.addEventListener('contextmenu', e => {
-        if (current() && safeArea(e)) { e.preventDefault(); e.stopImmediatePropagation(); }
-    }, true);
-    document.addEventListener('wheel', e => {
-        const ctx = current();
-        if (!ctx || !safeArea(e) || e.ctrlKey || e.deltaY === 0) return;
+    window.addEventListener('wheel', e => {
+        const ctx = getPlayerContext();
+        if (!ctx.player || allowedArea(e) || e.ctrlKey || e.deltaY === 0) return;
         const volume = Number(ctx.player.getVolume());
         if (!Number.isFinite(volume)) return;
-        e.preventDefault(); e.stopImmediatePropagation();
+        e.preventDefault();
+        e.stopImmediatePropagation();
         ctx.player.setVolume(Math.max(0, Math.min(100, volume + (e.deltaY < 0 ? 5 : -5))));
+        diagnostic('wheel volume changed');
     }, {capture: true, passive: false});
-    window.addEventListener('blur', reset);
-    console.info('[JFD Mouse] custom mouse-only controls initialized (prototype v0.1)');
+    window.addEventListener('blur', resetDrag);
+    diagnostic('script initialized');
 })();
-// END CHATGPT_JFD_MOUSECONTROLS_V01
+// END CHATGPT_JFD_MOUSECONTROLS_V02
+
