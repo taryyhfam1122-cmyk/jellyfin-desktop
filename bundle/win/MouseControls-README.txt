@@ -1,4 +1,4 @@
-Jellyfin Desktop custom Windows x64 - Mouse Controls v0.3
+Jellyfin Desktop custom Windows x64 - Mouse Controls v0.4
 
 Extract the entire ZIP into a NEW folder. Do not copy files over a normal
 Jellyfin Desktop installation. Run Start-MouseControls.cmd. It creates/selects
@@ -12,10 +12,15 @@ Rightwards seeks forwards; leftwards backwards. Drag threshold: 10 pixels.
 Wheel up/down: volume +/-5, range 0-100. Right click: pause/resume.
 Middle click: stop through Jellyfin's playback manager, preserving watch position.
 
-After the server successfully acknowledges Sessions/Playing/Stopped, the client
-refreshes the current page once (650ms delay) to update watch history. No refresh
-on failed reports, new playback, or navigation during the delay. Server resume
-thresholds still apply: test with a long movie away from its start/end.
+Drag as before for a precise seek. After 350ms, keeping the button held repeats
+seeking even with a stationary mouse. At 100 CSS pixels from the starting point,
+left hold advances 15 seconds per second; right hold advances 90 seconds per
+second. Drag left to rewind, farther for faster seeking. Return within 10 pixels
+of the starting point to stop continuous seeking. Release to finish. Blur,
+pointer cancellation, stopping or changing videos also cancels held seeking.
+
+Stop preserves Jellyfin's normal progress reporting and history updates.
+There is no forced page reload after Stop.
 
 Test left +100px (+15s), right +100px (+90s), both reverse directions,
 right click twice, wheel, then middle click immediately after seeking.
@@ -26,4 +31,4 @@ Test windowed/fullscreen and Windows display scaling. At 150% scaling a physical
 Build verification covers JavaScript behavior, Qt/MPV/VC runtime files and a
 12-second extracted-ZIP startup on Windows CI. Actual playback, drag delivery,
 audio and server watch history require your Windows/Jellyfin environment.
-Logs include [JFD Mouse v0.3] markers; check Portable data/profiles for logs.
+Logs include [JFD Mouse v0.4] markers; check Portable data/profiles for logs.

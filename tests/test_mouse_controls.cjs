@@ -4,10 +4,10 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const shell = fs.readFileSync(path.join(__dirname, '../native/nativeshell.js'), 'utf8');
-const code = shell.slice(shell.indexOf('// BEGIN CHATGPT_JFD_MOUSECONTROLS_V03'));
+const code = shell.slice(shell.indexOf('// BEGIN CHATGPT_JFD_MOUSECONTROLS_V04'));
 const playerCode = fs.readFileSync(path.join(__dirname, '../native/mpvVideoPlayer.js'), 'utf8');
 async function setup(pointer = true) {
-    const listeners = {}, timers = new Map(), calls = [], callbacks = new WeakMap();
+    const listeners = {}, timers = new Map(), intervals = new Map(), calls = [], callbacks = new WeakMap();
     let id = 0, now = 100, container = true, reloads = 0;
     const events = {
         trigger(obj, name, args = []) { for (const fn of callbacks.get(obj)?.[name] || []) fn({}, ...args); },
@@ -18,6 +18,7 @@ async function setup(pointer = true) {
     for (const name of ['positionUpdate','updateDuration','paused','playing','stopped','finished','error','bufferedRangesUpdated']) native[name] = signal();
     for (const name of ['seekTo','setVolume','stop','setVideoRectangle','pause','play']) native[name] = (...args) => calls.push([name, ...args]);
     const document = {
+        addEventListener(name, fn) { (listeners[name] ||= []).push(fn); },
         querySelector: () => container ? {} : null,
         body: {classList: {remove() {}}, appendChild(el) { el.isConnected = true; }},
         createElement: () => ({style: {}})
@@ -37,7 +38,9 @@ async function setup(pointer = true) {
     const context = vm.createContext({window: win, document, URL, Date,
         performance: {now: () => now}, console: {info() {}},
         setTimeout(fn, delay) { timers.set(++id, {fn, delay}); return id; },
-        clearTimeout(id) { timers.delete(id); }, setInterval() {}, clearInterval() {}
+        clearTimeout(id) { timers.delete(id); },
+        setInterval(fn, delay) { intervals.set(++id, {fn, delay, next: now + delay}); return id; },
+        clearInterval(id) { intervals.delete(id); }
     });
     vm.runInContext(code, context);
     await Promise.resolve();
@@ -62,7 +65,16 @@ async function setup(pointer = true) {
         emit(type + 'up', {button, buttons: 0, clientX: 200 + dx});
     }
     return {win, player, native, calls, events, manager, emit, drag,
-        advance(ms) { now += ms; },
+        advance(ms) {
+            const end = now + ms;
+            while (true) {
+                const next = [...intervals.values()].sort((a,b) => a.next - b.next)[0];
+                if (!next || next.next > end) break;
+                now = next.next; next.next += next.delay; next.fn();
+            }
+            now = end;
+        },
+        intervalCount: () => intervals.size,
         runTimers() { for (const [key, t] of [...timers]) { timers.delete(key); t.fn(); } },
         reloads: () => reloads, removeContainer() { container = false; }};
 }
@@ -134,24 +146,52 @@ test('middle stop uses actual manager/player and preserves the last seek before 
     let duplicates = 0; s.events.on(s.player, 'stopped', () => { duplicates++; });
     s.player.onEndedInternal(); assert.equal(duplicates, 0);
 });
-test('history reload waits for successful actual stop report, then reloads once', async () => {
-    const s = await setup(); s.emit('pointerdown', {button: 1});
-    s.runTimers(); assert.equal(s.reloads(), 0);
-    await s.win.fetch('http://server/Sessions/Playing/Stopped', false);
-    s.runTimers(); assert.equal(s.reloads(), 0);
-    await s.win.fetch('http://server/Sessions/Playing/Progress');
-    s.runTimers(); assert.equal(s.reloads(), 0);
-    const response = await s.win.fetch('http://server/jellyfin/Sessions/Playing/Stopped');
-    assert.equal(response.ok, true); s.runTimers(); assert.equal(s.reloads(), 1);
-    await s.win.fetch('http://server/Sessions/Playing/Stopped'); s.runTimers(); assert.equal(s.reloads(), 1);
+test('Stop keeps normal reporting, does not wrap network APIs or reload', async () => {
+    const s = await setup();
+    assert.equal(s.win.fetch.name, 'fetch');
+    s.emit('pointerdown', {button: 1});
+    await s.win.fetch('http://server/Sessions/Playing/Stopped');
+    s.runTimers(); s.advance(5000); assert.equal(s.reloads(), 0);
 });
-test('XHR stop report also refreshes; navigation/new playback cancels reload', async () => {
-    for (const cancel of [false, 'navigation', 'playback']) {
-        const s = await setup(); s.emit('pointerdown', {button: 1});
-        const req = new s.win.XMLHttpRequest();
-        assert.equal(req.send(), 'sent'); req.responseURL = 'http://server/Sessions/Playing/Stopped'; req.status = 204; req.listener();
-        if (cancel === 'navigation') s.win.location.href += '&new=1';
-        if (cancel === 'playback') s.win.jfdMouseControls.setPlayer(s.player);
-        s.runTimers(); assert.equal(s.reloads(), cancel ? 0 : 1);
+test('stationary left/right hold continues seeking and release preserves its total', async () => {
+    for (const [button, rate] of [[0, 15000], [2, 90000]]) {
+        const s = await setup();
+        s.emit('pointerdown', {button});
+        s.emit('pointermove', {button, buttons: button === 0 ? 1 : 2, clientX: 300});
+        s.advance(320); assert.equal(s.player.currentTime(), 120000 + rate);
+        s.advance(1030);
+        s.emit('pointerup', {button, buttons: 0, clientX: 300});
+        assert.equal(s.player.currentTime(), 120000 + rate * 2);
+        const n = s.calls.length; s.advance(1000); assert.equal(s.calls.length, n);
+        assert.equal(s.intervalCount(), 0);
     }
+});
+test('held rewind, reversal, and center dead zone control direction and speed', async () => {
+    const s = await setup();
+    s.emit('pointerdown'); s.emit('pointermove', {clientX: 100}); s.advance(1350);
+    const rewound = s.player.currentTime(); assert.ok(rewound < 105000);
+    s.emit('pointermove', {clientX: 300}); const reversed = s.player.currentTime();
+    s.advance(800); assert.ok(s.player.currentTime() > reversed);
+    s.emit('pointermove', {clientX: 200}); const centered = s.player.currentTime();
+    s.advance(800); assert.equal(s.player.currentTime(), centered);
+});
+test('all cancellation paths clear the continuous seek timer', async () => {
+    for (const reason of ['blur', 'pointercancel', 'lostpointercapture', 'mouseout', 'middle', 'new', 'stopped', 'chord']) {
+        const s = await setup();
+        s.emit('pointerdown'); s.emit('pointermove', {clientX: 300}); s.advance(500);
+        if (reason === 'middle') s.emit('pointerdown', {button: 1});
+        else if (reason === 'new') s.win.jfdMouseControls.setPlayer(s.player);
+        else if (reason === 'stopped') s.native.stopped.fn();
+        else if (reason === 'chord') s.emit('pointermove', {buttons: 3});
+        else s.emit(reason);
+        const n = s.calls.length; s.advance(1000); assert.equal(s.calls.length, n, reason);
+        assert.equal(s.intervalCount(), 0, reason);
+    }
+});
+test('no held seeking for a simple click or sub-threshold movement', async () => {
+    const s = await setup(); s.emit('pointerdown', {button: 2});
+    s.emit('pointermove', {button: 2, buttons: 2, clientX: 204}); s.advance(3000);
+    assert.equal(s.intervalCount(), 0); assert.equal(s.calls.length, 0);
+    s.emit('pointerup', {button: 2, clientX: 204});
+    assert.equal(s.calls.at(-1)[0], 'pause');
 });
