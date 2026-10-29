@@ -592,13 +592,13 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         }
     }
 });
-// BEGIN CHATGPT_JFD_MOUSECONTROLS_V04
+// BEGIN CHATGPT_JFD_MOUSECONTROLS_V05
 // Mouse controls for Jellyfin Desktop's embedded Qt/WebEngine/libmpv player.
 // Seek uses Qt WebChannel native player rather than playbackManager._currentPlayer.
 (function () {
     'use strict';
-    if (window.__chatgptJfdMouseV04) return;
-    window.__chatgptJfdMouseV04 = true;
+    if (window.__chatgptJfdMouseV05) return;
+    window.__chatgptJfdMouseV05 = true;
 
     const SMALL_MS_PER_PX = 150;
     const LARGE_MS_PER_PX = 900;
@@ -615,6 +615,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     let nativePaused = false;
     let active = null;
     let ignoreNextClick = false;
+    let singleClickTimer = null;
     let suppressAuxUntil = 0;
     let osd = null;
     let osdTimer = null;
@@ -622,8 +623,8 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     function log(message, obj) {
         if (logCount >= MAX_LOGS) return;
         logCount++;
-        try { console.info('[JFD Mouse v0.4] ' + message + (obj ? ' ' + JSON.stringify(obj) : '')); }
-        catch (_) { console.info('[JFD Mouse v0.4] ' + message); }
+        try { console.info('[JFD Mouse v0.5] ' + message + (obj ? ' ' + JSON.stringify(obj) : '')); }
+        catch (_) { console.info('[JFD Mouse v0.5] ' + message); }
     }
 
     // Dependencies are supplied by the bundled plugins, not jellyfin-web globals.
@@ -701,7 +702,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         if (!document.body) return;
         if (!osd) {
             osd = document.createElement('div');
-            osd.id = 'jfd-v04-mouse-seek';
+            osd.id = 'jfd-v05-mouse-seek';
             osd.style.cssText = 'position:fixed;top:10%;left:50%;transform:translateX(-50%);z-index:2147483647;pointer-events:none;color:#fff;background:rgba(0,0,0,.72);padding:9px 14px;border-radius:8px;font:600 16px sans-serif;white-space:pre';
         }
         if (!osd.isConnected) document.body.appendChild(osd);
@@ -784,6 +785,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     function down(e) {
         if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
         resetDrag();
+        clearTimeout(singleClickTimer);
         const ctx = getContext();
         const area = eligibleArea(e);
         if (ctx.error || area) {
@@ -822,7 +824,10 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             lastSeek: -100000
         };
         active = s;
-        if (e.button === 2) e.preventDefault();
+        // jellyfin-web schedules play/pause on pointerdown (before a drag can
+        // be recognized). Own this gesture from the press, not just the click.
+        e.preventDefault();
+        e.stopImmediatePropagation();
     }
 
     function move(e) {
@@ -882,7 +887,25 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     window.addEventListener('mousemove', e => { if (!usePointer) move(e); }, true);
     window.addEventListener('mouseup', e => { if (!usePointer) up(e); }, true);
     window.addEventListener('click', e => {
-        if (ignoreNextClick) { ignoreNextClick = false; e.preventDefault(); e.stopImmediatePropagation(); }
+        if (ignoreNextClick) {
+            ignoreNextClick = false;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return;
+        }
+        const ctx = getContext();
+        if (e.button !== 0 || ctx.error || eligibleArea(e)) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        clearTimeout(singleClickTimer);
+        // Keep ordinary single-click pause and double-click fullscreen. Waiting
+        // for click means pressing/holding alone can never pause a drag.
+        if (e.detail >= 2) return;
+        singleClickTimer = setTimeout(() => {
+            if (active || activePlayer !== ctx.player || !ctx.player.currentSrc()) return;
+            if (ctx.player.paused()) ctx.player.unpause();
+            else ctx.player.pause();
+        }, 300);
     }, true);
     window.addEventListener('auxclick', e => {
         if (performance.now() < suppressAuxUntil || (!getContext().error && !eligibleArea(e))) { e.preventDefault(); e.stopImmediatePropagation(); }
@@ -905,7 +928,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             log('volume changed', {volume: value});
         } catch (err) { log('volume change failed', {message: String(err)}); }
     }, {capture: true, passive: false});
-    window.addEventListener('blur', () => { resetDrag(); });
+    window.addEventListener('blur', () => { resetDrag(); clearTimeout(singleClickTimer); });
 
     if (window.apiPromise && typeof window.apiPromise.then === 'function') {
         window.apiPromise.then(bindNativePlayer).catch(err => log('Qt API promise failed', {error: String(err)}));
@@ -920,4 +943,4 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     }
     log('script initialized');
 })();
-// END CHATGPT_JFD_MOUSECONTROLS_V04
+// END CHATGPT_JFD_MOUSECONTROLS_V05

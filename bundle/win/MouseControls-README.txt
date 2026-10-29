@@ -1,4 +1,4 @@
-Jellyfin Desktop custom Windows x64 - Mouse Controls v0.4
+Jellyfin Desktop custom Windows x64 - Mouse Controls v0.5
 
 Extract the entire ZIP into a NEW folder. Do not copy files over a normal
 Jellyfin Desktop installation. Run Start-MouseControls.cmd. It creates/selects
@@ -9,6 +9,8 @@ Connect to your Jellyfin server and play a video using the embedded MPV player.
 Use the central video area (6.5%-88% of window height), away from buttons/sliders.
 Left drag: 15 seconds per 100 CSS pixels. Right drag: 90 seconds per 100 pixels.
 Rightwards seeks forwards; leftwards backwards. Drag threshold: 10 pixels.
+Left drag preserves playing/paused state. A plain left click toggles pause after
+release; double click retains the standard fullscreen action.
 Wheel up/down: volume +/-5, range 0-100. Right click: pause/resume.
 Middle click: stop through Jellyfin's playback manager, preserving watch position.
 
@@ -31,4 +33,4 @@ Test windowed/fullscreen and Windows display scaling. At 150% scaling a physical
 Build verification covers JavaScript behavior, Qt/MPV/VC runtime files and a
 12-second extracted-ZIP startup on Windows CI. Actual playback, drag delivery,
 audio and server watch history require your Windows/Jellyfin environment.
-Logs include [JFD Mouse v0.4] markers; check Portable data/profiles for logs.
+Logs include [JFD Mouse v0.5] markers; check Portable data/profiles for logs.

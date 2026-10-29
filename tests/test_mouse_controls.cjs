@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const shell = fs.readFileSync(path.join(__dirname, '../native/nativeshell.js'), 'utf8');
-const code = shell.slice(shell.indexOf('// BEGIN CHATGPT_JFD_MOUSECONTROLS_V04'));
+const code = shell.slice(shell.indexOf('// BEGIN CHATGPT_JFD_MOUSECONTROLS_V05'));
 const playerCode = fs.readFileSync(path.join(__dirname, '../native/mpvVideoPlayer.js'), 'utf8');
 async function setup(pointer = true) {
     const listeners = {}, timers = new Map(), intervals = new Map(), calls = [], callbacks = new WeakMap();
@@ -194,4 +194,35 @@ test('no held seeking for a simple click or sub-threshold movement', async () =>
     assert.equal(s.intervalCount(), 0); assert.equal(s.calls.length, 0);
     s.emit('pointerup', {button: 2, clientX: 204});
     assert.equal(s.calls.at(-1)[0], 'pause');
+});
+
+test('left press cannot reach web pointerdown pause; playing and paused drags preserve state', async () => {
+    for (const paused of [false, true]) {
+        const s = await setup(); s.player._paused = paused;
+        const down = s.emit('pointerdown', {button: 0});
+        // The web view's bubbling pointerdown handler schedules a pause unless
+        // this capture listener stops it. Checking only click misses this bug.
+        assert.equal(down.stopped, true);
+        assert.equal(down.prevented, true);
+        s.emit('pointermove', {clientX: 300}); s.advance(1500);
+        s.emit('pointerup', {clientX: 300}); s.emit('click', {detail: 1}); s.runTimers();
+        assert.equal(s.calls.filter(c => c[0] === 'pause' || c[0] === 'play').length, 0);
+        assert.equal(s.player.paused(), paused);
+    }
+});
+test('ordinary left click toggles only after release; second click cancels toggle', async () => {
+    const s = await setup();
+    s.emit('pointerdown'); s.advance(1000); assert.equal(s.calls.length, 0);
+    s.emit('pointerup'); s.emit('click', {detail: 1}); s.runTimers();
+    assert.equal(s.calls.at(-1)[0], 'pause');
+    const count = s.calls.length;
+    s.emit('pointerdown'); s.emit('pointerup'); s.emit('click', {detail: 1});
+    s.emit('pointerdown'); s.emit('pointerup'); s.emit('click', {detail: 2}); s.runTimers();
+    assert.equal(s.calls.length, count);
+});
+test('a new drag cancels the preceding single-click pause timer', async () => {
+    const s = await setup();
+    s.emit('pointerdown'); s.emit('pointerup'); s.emit('click', {detail: 1});
+    s.emit('pointerdown'); s.emit('pointermove', {clientX: 300}); s.runTimers();
+    assert.equal(s.calls.filter(c => c[0] === 'pause' || c[0] === 'play').length, 0);
 });
