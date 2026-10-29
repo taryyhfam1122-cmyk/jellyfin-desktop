@@ -34,3 +34,14 @@ one/two-finger action failed. Do not send passwords or access tokens.
 
 Profile shortcut target after first launch:
 "<folder>\Jellyfin Desktop.exe" --profile TouchControls-v01
+
+Surface compatibility diagnostic v0.2
+====================================
+Surface Pro 12-inch: extract to a NEW folder and run Start-SurfaceCompat.cmd.
+This is still an x64 build under emulation, not native ARM64.
+The launcher selects a separate SurfaceCompat-v02 profile; do not copy old data.
+It disables Qt QML JIT and Chromium V8 JIT and uses software OpenGL.
+This is a diagnostic workaround, NOT a confirmed fix. UI may be slower.
+The Chromium sandbox remains enabled.
+If startup fails, send Surface-startup.log plus the latest data/profiles/*/logs log.
+Normal startup / Start-TouchControls.cmd does not enable this diagnostic mode.

@@ -13,7 +13,7 @@ $required = @(
     'resources/v8_context_snapshot.bin', 'translations/qtwebengine_locales/en-US.pak',
     'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll',
     'Start-MouseControls.cmd', 'MouseControls-README.txt',
-    'Start-TouchControls.cmd', 'TouchControls-README.txt'
+    'Start-TouchControls.cmd', 'TouchControls-README.txt', 'Start-SurfaceCompat.cmd', 'opengl32sw.dll'
 )
 foreach ($file in $required) {
     if (-not (Test-Path (Join-Path $stage $file))) { throw "Portable is missing: $file" }
@@ -40,9 +40,20 @@ try {
         Get-Content (Join-Path $report 'stdout.txt'),(Join-Path $report 'stderr.txt')
         throw "Portable startup failed: exit $($process.ExitCode)"
     }
+    Stop-Process -Id $process.Id -Force
+    $process.WaitForExit()
+    $env:JFD_SURFACE_COMPAT = '1'
+    $compatConfig = "$config-compat"
+    $process = Start-Process -FilePath $exe -WorkingDirectory $stage -ArgumentList @('--config-dir', "`"$compatConfig`"") -PassThru -RedirectStandardOutput (Join-Path $report 'compat-stdout.txt') -RedirectStandardError (Join-Path $report 'compat-stderr.txt')
+    Start-Sleep -Seconds 15
+    $process.Refresh()
+    if ($process.HasExited) { throw "Compatibility startup failed: exit $($process.ExitCode)" }
+    'PASS: normal startup (12s) and compatibility startup (15s); x64 runner only.' | Set-Content (Join-Path $report 'compat-result.txt')
     'PASS: extracted Portable remained running for 12 seconds with Qt SDK removed from PATH.' | Tee-Object -FilePath (Join-Path $report 'result.txt')
 } finally {
     if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+    Remove-Item Env:JFD_SURFACE_COMPAT -ErrorAction SilentlyContinue
+    if (Test-Path "$config-compat") { Copy-Item "$config-compat" (Join-Path $report 'compat-config') -Recurse -Force }
     $env:PATH = $originalPath
     if (Test-Path $config) { Copy-Item $config (Join-Path $report 'config') -Recurse -Force }
 }

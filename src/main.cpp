@@ -195,6 +195,17 @@ int main(int argc, char *argv[])
     parser.addOption(deleteProfileOption);
     parser.addOption(createProfileOption);
 
+    // Opt-in diagnostic mode for x64 execution on Windows ARM devices.
+    // Set these before either Qt application/JavaScript engine is created.
+    const bool surfaceCompat = qEnvironmentVariableIntValue("JFD_SURFACE_COMPAT") == 1;
+    if (surfaceCompat)
+    {
+      qputenv("QV4_FORCE_INTERPRETER", "1");
+      qputenv("QML_DISABLE_DISK_CACHE", "1");
+      qputenv("QT_OPENGL", "software");
+      g_qtFlags.removeAll("--enable-gpu-rasterization");
+      g_qtFlags << "--disable-gpu" << "--js-flags=--jitless";
+    }
     char **newArgv = appendCommandLineArguments(argc, argv, g_qtFlags);
     int newArgc = argc + static_cast<int>(g_qtFlags.size());
 
@@ -433,7 +444,18 @@ int main(int argc, char *argv[])
       chromiumFlags << "--ignore-certificate-errors";
 
     if (!chromiumFlags.isEmpty())
-      qputenv("QTWEBENGINE_CHROMIUM_FLAGS", chromiumFlags.join(" ").toUtf8());
+    {
+      // Keep caller-supplied diagnostic flags instead of silently replacing them.
+      QByteArray flags = qgetenv("QTWEBENGINE_CHROMIUM_FLAGS");
+      if (!flags.isEmpty()) flags += ' ';
+      flags += chromiumFlags.join(" ").toUtf8();
+      qputenv("QTWEBENGINE_CHROMIUM_FLAGS", flags);
+    }
+
+    qInfo() << "Surface compatibility mode:" << surfaceCompat
+            << "QV4_FORCE_INTERPRETER:" << qgetenv("QV4_FORCE_INTERPRETER")
+            << "QT_OPENGL:" << qgetenv("QT_OPENGL");
+    qInfo() << "Qt startup flags:" << g_qtFlags;
 
     if (parser.isSet("remote-debugging-port"))
       qputenv("QTWEBENGINE_REMOTE_DEBUGGING", parser.value("remote-debugging-port").toUtf8());
