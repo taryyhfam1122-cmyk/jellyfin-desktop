@@ -13,6 +13,7 @@ on:
     branches:
       - master
       - mouse-controls-v01
+      - touch-controls-v01
 
 jobs:
   build:
@@ -125,7 +126,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-mouse-v0.5-validation
+        name: ${{ matrix.artifact }}-touch-v0.1-validation
         path: build/portable-validation/
         if-no-files-found: ignore
     - name: Archive installer
@@ -136,6 +137,6 @@ jobs:
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-mouse-v0.5-portable
+        name: ${{ matrix.artifact }}-touch-v0.1-portable
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.zip
         if-no-files-found: error

@@ -12,7 +12,8 @@ $required = @(
     'platforms/qwindows.dll', 'resources/icudtl.dat', 'resources/qtwebengine_resources.pak',
     'resources/v8_context_snapshot.bin', 'translations/qtwebengine_locales/en-US.pak',
     'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll',
-    'Start-MouseControls.cmd', 'MouseControls-README.txt'
+    'Start-MouseControls.cmd', 'MouseControls-README.txt',
+    'Start-TouchControls.cmd', 'TouchControls-README.txt'
 )
 foreach ($file in $required) {
     if (-not (Test-Path (Join-Path $stage $file))) { throw "Portable is missing: $file" }

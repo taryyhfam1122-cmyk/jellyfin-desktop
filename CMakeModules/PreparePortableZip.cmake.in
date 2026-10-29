@@ -40,6 +40,8 @@ message(STATUS "Created portable marker file")
 
 message(STATUS "Portable package prepared in: ${ZIP_DIR}")
 
-file(COPY "${PROJECT_SOURCE_DIR}/bundle/win/Start-MouseControls.cmd"
+file(COPY "${PROJECT_SOURCE_DIR}/bundle/win/Start-TouchControls.cmd"
+          "${PROJECT_SOURCE_DIR}/bundle/win/TouchControls-README.txt"
+          "${PROJECT_SOURCE_DIR}/bundle/win/Start-MouseControls.cmd"
           "${PROJECT_SOURCE_DIR}/bundle/win/MouseControls-README.txt"
      DESTINATION "${ZIP_DIR}")

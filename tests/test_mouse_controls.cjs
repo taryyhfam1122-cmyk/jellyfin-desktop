@@ -7,6 +7,7 @@ const shell = fs.readFileSync(path.join(__dirname, '../native/nativeshell.js'), 
 const code = shell.slice(shell.indexOf('// BEGIN CHATGPT_JFD_MOUSECONTROLS_V05'));
 const playerCode = fs.readFileSync(path.join(__dirname, '../native/mpvVideoPlayer.js'), 'utf8');
 async function setup(pointer = true) {
+    const nodes = [];
     const listeners = {}, timers = new Map(), intervals = new Map(), calls = [], callbacks = new WeakMap();
     let id = 0, now = 100, container = true, reloads = 0;
     const events = {
@@ -21,11 +22,11 @@ async function setup(pointer = true) {
         addEventListener(name, fn) { (listeners[name] ||= []).push(fn); },
         querySelector: () => container ? {} : null,
         body: {classList: {remove() {}}, appendChild(el) { el.isConnected = true; }},
-        createElement: () => ({style: {}})
+        createElement: (tag) => { const el={tag,style: {}, setAttribute() {}, addEventListener(name, fn) { this[name] = fn; }}; nodes.push(el); return el; }
     };
     const win = {
         api: {player: native}, apiPromise: Promise.resolve({player: native}),
-        innerHeight: 1000, location: {href: 'http://server/web/#/details?id=1', reload() { reloads++; }},
+        innerWidth: 1000, innerHeight: 1000, location: {href: 'http://server/web/#/details?id=1', reload() { reloads++; }},
         addEventListener(name, fn) { (listeners[name] ||= []).push(fn); },
         fetch: async (url, ok = true) => ({url, ok})
     };
@@ -64,7 +65,7 @@ async function setup(pointer = true) {
         if (move) emit(type + 'move', {button, buttons: button === 0 ? 1 : 2, clientX: 200 + dx});
         emit(type + 'up', {button, buttons: 0, clientX: 200 + dx});
     }
-    return {win, player, native, calls, events, manager, emit, drag,
+    return {nodes, win, player, native, calls, events, manager, emit, drag,
         advance(ms) {
             const end = now + ms;
             while (true) {
@@ -119,10 +120,10 @@ test('wheel synchronizes saved player volume; rapid events accumulate and clamp'
     assert.equal(s.player.getVolume(), 0);
     assert.equal(s.emit('wheel', {deltaY: -120, ctrlKey: true}).prevented, undefined);
 });
-test('UI buttons, edges, touch and unloaded media are left alone', async () => {
+test('UI buttons, edges, pen and unloaded media are left alone', async () => {
     const s = await setup();
     assert.equal(s.emit('pointerdown', {button: 1, clientY: 950}).prevented, undefined);
-    assert.equal(s.emit('pointerdown', {button: 1, pointerType: 'touch'}).prevented, undefined);
+    assert.equal(s.emit('pointerdown', {button: 1, pointerType: 'pen'}).prevented, undefined);
     assert.equal(s.emit('pointerdown', {button: 1, target: {nodeType: 1, closest: () => true}}).prevented, undefined);
     s.player._currentSrc = null; s.drag(0, 100);
     assert.equal(s.calls.length, 0);
@@ -225,4 +226,64 @@ test('a new drag cancels the preceding single-click pause timer', async () => {
     s.emit('pointerdown'); s.emit('pointerup'); s.emit('click', {detail: 1});
     s.emit('pointerdown'); s.emit('pointermove', {clientX: 300}); s.runTimers();
     assert.equal(s.calls.filter(c => c[0] === 'pause' || c[0] === 'play').length, 0);
+});
+
+function finger(s, event, id, x, y=500) {
+    return s.emit('pointer'+event, {pointerType:'touch',pointerId:id,clientX:x,clientY:y});
+}
+test('touch single-finger actual seek is +/-15 seconds per 100 CSS pixels', async () => {
+    const s = await setup();
+    finger(s,'down',1,200); finger(s,'move',1,300); finger(s,'up',1,300);
+    assert.equal(s.player.currentTime(),135000);
+    assert.equal(s.calls.find(c=>c[0]==='seekTo')[1],135000);
+    finger(s,'down',1,300); finger(s,'up',1,200);
+    assert.equal(s.player.currentTime(),120000);
+    assert.equal(s.calls.filter(c=>c[0]==='pause').length,0);
+    assert.equal(s.emit('click').prevented,true);
+});
+test('touch two-finger centroid seek uses 90 seconds, lifting fingers never taps', async () => {
+    const s=await setup();
+    finger(s,'down',1,200); finger(s,'down',2,400);
+    finger(s,'move',1,300); finger(s,'move',2,500);
+    finger(s,'up',1,300); finger(s,'up',2,500);
+    assert.equal(s.player.currentTime(),210000);
+    assert.equal(s.calls.filter(c=>c[0]==='pause'||c[0]==='play').length,0);
+});
+test('touch tap toggles once and right-edge volume increases upwards', async () => {
+    const s=await setup();
+    finger(s,'down',1,200); finger(s,'up',1,200);
+    assert.equal(s.calls.filter(c=>c[0]==='pause').length,1);
+    s.player._volume=50;
+    finger(s,'down',2,900,500); finger(s,'move',2,900,200); finger(s,'up',2,900,200);
+    assert.equal(s.player.getVolume(),100);
+    finger(s,'down',2,900,200); finger(s,'up',2,900,800);
+    assert.equal(s.player.getVolume(),0);
+});
+test('three fingers and cancellation have no gesture action; playback can reopen', async () => {
+    const s=await setup();
+    for(let i=1;i<=3;i++) finger(s,'down',i,200+i*20);
+    for(let i=1;i<=3;i++) finger(s,'up',i,400+i*20);
+    assert.equal(s.calls.length,0);
+    finger(s,'down',1,200); s.emit('pointercancel',{pointerType:'touch',pointerId:1});
+    finger(s,'up',1,300); assert.equal(s.calls.length,0);
+    s.win.jfdMouseControls.ended(s.player); s.win.jfdMouseControls.setPlayer(s.player);
+    finger(s,'down',1,200); finger(s,'up',1,300); assert.equal(s.player.currentTime(),135000);
+});
+test('touch UI and library input pass through without preventing natural scrolling', async () => {
+    const s=await setup();
+    assert.equal(s.emit('pointerdown',{pointerType:'touch',pointerId:1,target:{nodeType:1,closest:()=>true}}).prevented,undefined);
+    s.removeContainer();
+    assert.equal(finger(s,'down',1,200).prevented,undefined);
+    assert.equal(finger(s,'move',1,200,100).prevented,undefined);
+});
+
+test('touch stop button uses the same manager and final-position cache as middle stop', async () => {
+    const s=await setup(); let position;
+    s.events.on(s.player,'stopped',()=>{position=s.player.currentTime();});
+    finger(s,'down',1,200); finger(s,'up',1,300);
+    const button=s.nodes.find(n=>n.tag==='button'); assert.ok(button);
+    button.click();
+    assert.equal(position,135000);
+    assert.equal(s.calls.find(c=>c[0]==='managerStop')[1],s.player);
+    s.runTimers(); assert.equal(s.reloads(),0);
 });
