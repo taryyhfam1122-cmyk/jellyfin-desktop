@@ -48,6 +48,11 @@ try {
     Start-Sleep -Seconds 15
     $process.Refresh()
     if ($process.HasExited) { throw "Compatibility startup failed: exit $($process.ExitCode)" }
+    $compatLogs = @(Get-ChildItem $compatConfig -Recurse -Filter '*.log' | ForEach-Object { Get-Content $_.FullName -Raw }) -join "`n"
+    $effective = ($compatLogs -split "`n" | Where-Object { $_ -match 'Effective Chromium flags:' }) -join "`n"
+    if ($effective -notmatch '--disable-gpu' -or $effective -notmatch '--js-flags=--jitless') {
+        throw 'Compatibility Chromium flags were not configured in the environment'
+    }
     'PASS: normal startup (12s) and compatibility startup (15s); x64 runner only.' | Set-Content (Join-Path $report 'compat-result.txt')
     'PASS: extracted Portable remained running for 12 seconds with Qt SDK removed from PATH.' | Tee-Object -FilePath (Join-Path $report 'result.txt')
 } finally {

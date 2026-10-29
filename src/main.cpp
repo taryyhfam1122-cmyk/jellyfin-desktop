@@ -431,6 +431,13 @@ int main(int argc, char *argv[])
 #endif
 
     QStringList chromiumFlags;
+    // Qt 6.9 only reads Chromium arguments after --webEngineArgs, or from
+    // QTWEBENGINE_CHROMIUM_FLAGS (which overrides command-line arguments).
+    // g_qtFlags alone therefore does not disable GPU compositing.
+    if (surfaceCompat || parser.isSet("disable-gpu"))
+      chromiumFlags << "--disable-gpu";
+    if (surfaceCompat)
+      chromiumFlags << "--js-flags=--jitless";
 #ifdef Q_OS_LINUX
     // Disable QtWebEngine's automatic MPRIS registration - we handle it ourselves
     chromiumFlags << "--disable-features=MediaSessionService,HardwareMediaKeyHandling";
@@ -456,6 +463,7 @@ int main(int argc, char *argv[])
             << "QV4_FORCE_INTERPRETER:" << qgetenv("QV4_FORCE_INTERPRETER")
             << "QT_OPENGL:" << qgetenv("QT_OPENGL");
     qInfo() << "Qt startup flags:" << g_qtFlags;
+    qInfo() << "Effective Chromium flags:" << qgetenv("QTWEBENGINE_CHROMIUM_FLAGS");
 
     if (parser.isSet("remote-debugging-port"))
       qputenv("QTWEBENGINE_REMOTE_DEBUGGING", parser.value("remote-debugging-port").toUtf8());

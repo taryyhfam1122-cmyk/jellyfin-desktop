@@ -126,7 +126,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-touch-v0.2-validation
+        name: ${{ matrix.artifact }}-touch-v0.3-validation
         path: build/portable-validation/
         if-no-files-found: ignore
     - name: Archive installer
@@ -137,6 +137,6 @@ jobs:
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-touch-v0.2-portable
+        name: ${{ matrix.artifact }}-touch-v0.3-portable
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.zip
         if-no-files-found: error
