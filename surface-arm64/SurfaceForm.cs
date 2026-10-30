@@ -27,7 +27,7 @@ public sealed class SurfaceForm : Form
         KeyPreview = true;
 
         var back = Button("←", 48, () => { if (_browser.CanGoBack) _browser.GoBack(); });
-        var home = Button("ホーム", 74, () => { if (_serverUri is not null) _browser.CoreWebView2?.Navigate(new Uri(_serverUri, "/web/").ToString()); });
+        var home = Button("ホーム", 74, () => _ = StopAndHomeAsync());
         var connect = Button("接続", 66, () => _ = ConnectAsync());
         var refresh = Button("更新", 65, () => _browser.Reload());
         var full = Button("全画面", 82, ToggleFullscreen);
