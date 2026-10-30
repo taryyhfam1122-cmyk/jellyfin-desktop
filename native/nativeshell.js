@@ -1092,6 +1092,10 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             native: ctx.native,
             button: e.button,
             x0: e.clientX,
+            y0: e.clientY,
+            verticalMode: null,
+            startRate: Number(ctx.player.getPlaybackRate?.() || 1),
+            startVolume: Number(ctx.player.getVolume?.() || 50),
             start: position,
             target: position,
             duration: duration,
@@ -1109,12 +1113,37 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         e.stopImmediatePropagation();
     }
 
+    function updateMouseVertical(s,e) {
+        const dy=e.clientY-s.y0;
+        if(s.verticalMode==='speed'){
+            const base=Math.round(s.startRate*100);
+            const speed=Math.max(50,Math.min(400,base+Math.round(-dy/50)*5))/100;
+            if(speed!==Number(s.player.getPlaybackRate()))s.player.setPlaybackRate(speed);
+            showTouchValue('再生速度 '+speed.toFixed(2)+'×');
+        }else if(s.verticalMode==='volume'){
+            const volume=Math.max(0,Math.min(100,
+                Math.round(s.startVolume-dy*100/(window.innerHeight*.6))));
+            s.player.setVolume(volume);
+            showTouchValue('音量 '+volume+'%');
+        }
+    }
     function move(e) {
         if (e.pointerType && e.pointerType !== 'mouse') return;
         const s = active;
         if (!s || activePlayer !== s.player) { resetDrag(); return; }
         const buttonBit = s.button === 0 ? 1 : 2;
         if (e.buttons !== buttonBit) { resetDrag(); return; }
+        const dx=e.clientX-s.x0,dy=e.clientY-s.y0;
+        if(s.button===0 && !s.dragging && !s.verticalMode &&
+            Math.abs(dy)>=DRAG_THRESHOLD && Math.abs(dy)>Math.abs(dx)){
+            if(s.x0<=window.innerWidth*.15)s.verticalMode='speed';
+            else if(s.x0>=window.innerWidth*.85)s.verticalMode='volume';
+        }
+        if(s.verticalMode) {
+            e.preventDefault();e.stopImmediatePropagation();
+            updateMouseVertical(s,e);
+            return;
+        }
         updateDrag(s, e);
         if (!s.dragging) return;
         e.preventDefault();
@@ -1130,6 +1159,14 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         if (e.pointerType && e.pointerType !== 'mouse') return;
         const s = active;
         if (!s || e.button !== s.button || activePlayer !== s.player) return;
+        if(s.verticalMode){
+            e.preventDefault();e.stopImmediatePropagation();
+            updateMouseVertical(s,e);
+            resetDrag();hideTouchValue();
+            ignoreNextClick=true;
+            setTimeout(()=>{ignoreNextClick=false;},230);
+            return;
+        }
         updateDrag(s, e);
         if (s.dragging) {
             e.preventDefault();
