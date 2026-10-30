@@ -12,7 +12,7 @@ function harness() {
     const listeners = new Map(), reports = [], seeks = [], messages = [];
     const timers = new Map();
     let timerId = 0;
-    let current = 120, numberOfVideos = 1;
+    let current = 120, numberOfVideos = 1, clock=1000;
     const video = {
         isConnected: true, duration: 600, paused: false, volume: 0.5, muted: false,
         getBoundingClientRect: () => ({left:0,right:1200,top:0,bottom:800,width:1200,height:800}),
@@ -41,7 +41,7 @@ function harness() {
     const ctx = {
         window, document, location:{origin:'http://jellyfin.test:30013'},
         getComputedStyle:()=>({visibility:'visible'}), innerWidth:1200, innerHeight:800,
-        Map, Set, Number, Math, String, performance:{now:()=>1000}, console,
+        Map, Set, Number, Math, String, performance:{now:()=>clock}, console,
         setTimeout:(fn)=>{const id=++timerId;timers.set(id,fn);return id;},
         clearTimeout:id=>timers.delete(id)
     };
@@ -60,40 +60,62 @@ function harness() {
         return e;
     }
     const point = (id,x,y=350)=>({identifier:id,clientX:x,clientY:y});
-    return {dispatch,point,reports,messages,seeks,video,disableVideo:()=>{numberOfVideos=0;}};
+    return {dispatch,point,reports,messages,seeks,video,advance:ms=>{clock+=ms;},disableVideo:()=>{numberOfVideos=0;}};
 }
 
-test('touchstart/move/end performs one finger seek without re-seeking during drag',()=>{
+
+test('touch gesture seeks live every 250ms and commits final distance at release',()=>{
     const h=harness();
     h.dispatch('pointerdown',{pointerId:1,clientX:300});
     h.dispatch('touchstart',{changedTouches:[h.point(1,300)],touches:[h.point(1,300)]});
     h.dispatch('pointermove',{pointerId:1,clientX:400});
     h.dispatch('touchmove',{changedTouches:[h.point(1,400)],touches:[h.point(1,400)]});
-    assert.equal(h.seeks.length,0);
-    assert.equal(h.video.currentTime,120);
-    assert.ok(h.reports.includes('seek-preview'));
-    h.dispatch('touchend',{changedTouches:[h.point(1,400)],touches:[]});
     assert.deepEqual(h.seeks,[135]);
+    h.advance(100);
+    h.dispatch('touchmove',{changedTouches:[h.point(1,500)],touches:[h.point(1,500)]});
+    assert.deepEqual(h.seeks,[135]);
+    h.advance(160);
+    h.dispatch('touchmove',{changedTouches:[h.point(1,600)],touches:[h.point(1,600)]});
+    assert.deepEqual(h.seeks,[135,225]);
+    h.advance(40);
+    h.dispatch('touchmove',{changedTouches:[h.point(1,650)],touches:[h.point(1,650)]});
+    h.dispatch('touchend',{changedTouches:[h.point(1,650)],touches:[]});
+    assert.deepEqual(h.seeks,[135,225,273.75]);
     assert.ok(h.reports.includes('seek-committed'));
 });
-
-test('two-finger touch uses 90sec per 100px and does not turn release into tap',()=>{
+test('multi-touch is disabled and requires every finger to lift before retry',()=>{
     const h=harness();
     h.dispatch('touchstart',{changedTouches:[h.point(1,300)],touches:[h.point(1,300)]});
     h.dispatch('touchstart',{changedTouches:[h.point(2,400)],touches:[h.point(1,300),h.point(2,400)]});
     h.dispatch('touchmove',{changedTouches:[h.point(1,400),h.point(2,500)],touches:[h.point(1,400),h.point(2,500)]});
-    assert.equal(h.seeks.length,0);
     h.dispatch('touchend',{changedTouches:[h.point(1,400)],touches:[h.point(2,500)]});
-    assert.deepEqual(h.seeks,[210]);
+    h.dispatch('touchend',{changedTouches:[h.point(2,500)],touches:[]});
+    assert.deepEqual(h.seeks,[]);
+    assert.equal(h.video.paused,false);
+    h.dispatch('touchstart',{changedTouches:[h.point(1,300)],touches:[h.point(1,300)]});
+    h.dispatch('touchmove',{changedTouches:[h.point(1,400)],touches:[h.point(1,400)]});
+    assert.deepEqual(h.seeks,[135]);
 });
-
-test('pointer-only WebView2 path still seeks and sets pointer capture',()=>{
+test('pointer-only stream seeks during drag, and flushes pending target on lift',()=>{
     const h=harness();
     h.dispatch('pointerdown',{pointerId:1,clientX:300});
     h.dispatch('pointermove',{pointerId:1,clientX:400});
-    assert.equal(h.seeks.length,0);
-    h.dispatch('pointerup',{pointerId:1,clientX:400});
     assert.deepEqual(h.seeks,[135]);
+    h.advance(100);
+    h.dispatch('pointermove',{pointerId:1,clientX:500});
+    assert.deepEqual(h.seeks,[135]);
+    h.dispatch('pointerup',{pointerId:1,clientX:500});
+    assert.deepEqual(h.seeks,[135,180]);
+});
+test('two-pointer gesture never seeks or pauses',()=>{
+    const h=harness();
+    h.dispatch('pointerdown',{pointerId:1,clientX:300});
+    h.dispatch('pointerdown',{pointerId:2,clientX:400});
+    h.dispatch('pointermove',{pointerId:1,clientX:500});
+    h.dispatch('pointerup',{pointerId:1,clientX:500});
+    h.dispatch('pointerup',{pointerId:2,clientX:400});
+    assert.deepEqual(h.seeks,[]);
+    assert.equal(h.video.paused,false);
 });
 
 test('gesture recognition never swallows library scrolling or seekbar touch',()=>{
