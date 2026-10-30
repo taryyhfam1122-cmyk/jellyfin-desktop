@@ -19,7 +19,12 @@ function harness(){
         get currentTime(){return current;},
         set currentTime(value){current=value;seeks.push(value);}
     };
-    const element=()=>({style:{},appendChild(){},set textContent(v){this._textContent=v;}});
+    const elements=[];
+    const element=()=>{
+        const node={style:{},appendChild(){},set textContent(v){this._textContent=v;}};
+        elements.push(node);
+        return node;
+    };
     const document={
         documentElement:{appendChild(){}},head:{appendChild(){}},body:{appendChild(){}},
         getElementById:()=>null, createElement:element,
@@ -88,6 +93,7 @@ function harness(){
     }
     return {dispatch,point,seeks,reports,messages,video,advance,
         activeTimers:()=>intervals.size,pauses:()=>pauses,
+        overlayLabel:()=>elements.find(e=>e.id==='jfd-arm64-seek-overlay')?._textContent,
         disableVideo:()=>{numberOfVideos=0;}};
 }
 const start=(h,x=300,y=350)=>h.dispatch('touchstart',{
@@ -340,50 +346,54 @@ test('native fullscreen handler and exit toolbar remain in place',()=>{
     assert.match(native,/アプリを終了/);
 });
 
-test('left-edge swipe UP increases playbackRate by exactly 0.5x per 50 CSS px',()=>{
+test('left edge UP steps in 0.05x increments, 50 CSS px per step',()=>{
     const h=harness();
     start(h,100);
     move(h,100,300);
-    assert.equal(h.video.playbackRate,1.5);
+    assert.equal(h.video.playbackRate,1.05);
     move(h,100,250);
-    assert.equal(h.video.playbackRate,2.0);
+    assert.equal(h.video.playbackRate,1.10);
     move(h,100,200);
-    assert.equal(h.video.playbackRate,2.5);
+    assert.equal(h.video.playbackRate,1.15);
     end(h,100,200);
-    assert.equal(h.video.playbackRate,2.5,'rate persists after finger release');
-    assert.deepEqual(h.seeks,[],'speed gesture must not seek');
-    assert.equal(h.video.volume,.5,'speed must not change volume');
+    assert.equal(h.video.playbackRate,1.15,'release preserves speed');
+    assert.deepEqual(h.seeks,[],'vertical speed gesture does not seek');
+    assert.equal(h.video.volume,.5,'volume unchanged');
     assert.ok(h.reports.includes('speed-changed'));
     assert.equal(h.activeTimers(),0);
 });
-test('left-edge swipe DOWN reduces playbackRate in half steps with a 0.5x minimum',()=>{
+test('left edge DOWN decreases speed in precise 0.05x increments',()=>{
     const h=harness();
-    h.video.playbackRate=2.5;
+    h.video.playbackRate=1.20;
     start(h,100);
     move(h,100,400);
-    assert.equal(h.video.playbackRate,2.0);
+    assert.equal(h.video.playbackRate,1.15);
     move(h,100,450);
-    assert.equal(h.video.playbackRate,1.5);
+    assert.equal(h.video.playbackRate,1.10);
     move(h,100,500);
-    assert.equal(h.video.playbackRate,1.0);
-    move(h,100,600);
-    assert.equal(h.video.playbackRate,.5);
-    end(h,100,600);
+    assert.equal(h.video.playbackRate,1.05);
+    move(h,100,550);
+    assert.equal(h.video.playbackRate,1);
+    end(h,100,550);
     assert.deepEqual(h.seeks,[]);
 });
-test('speed has a 4.0x maximum and is based on initial rate, not cumulative move events',()=>{
-    const h=harness();
-    h.video.playbackRate=3.5;
-    start(h,100);
-    move(h,100,300);
-    assert.equal(h.video.playbackRate,4);
-    move(h,100,250);
-    assert.equal(h.video.playbackRate,4);
-    move(h,100,300);
-    assert.equal(h.video.playbackRate,4);
-    end(h,100,300);
+test('speed clamps to 0.50x and 4.00x with 0.05x boundary steps',()=>{
+    const low=harness();
+    low.video.playbackRate=.55;
+    start(low,100); move(low,100,400);
+    assert.equal(low.video.playbackRate,.5);
+    move(low,100,700);
+    assert.equal(low.video.playbackRate,.5);
+    end(low,100,700);
+    const high=harness();
+    high.video.playbackRate=3.95;
+    start(high,100); move(high,100,300);
+    assert.equal(high.video.playbackRate,4);
+    move(high,100,50);
+    assert.equal(high.video.playbackRate,4);
+    end(high,100,50);
 });
-test('left-edge speed changes only after enough vertical travel and prevents horizontal seek',()=>{
+test('speed changes on 25px threshold and stays fixed despite pointer jitter',()=>{
     const h=harness();
     start(h,100);
     move(h,100,340);
@@ -391,13 +401,36 @@ test('left-edge speed changes only after enough vertical travel and prevents hor
     move(h,100,326);
     assert.equal(h.video.playbackRate,1);
     move(h,100,325);
-    assert.equal(h.video.playbackRate,1.5);
+    assert.equal(h.video.playbackRate,1.05);
+    move(h,120,326);
+    assert.equal(h.video.playbackRate,1);
+    move(h,100,325);
+    assert.equal(h.video.playbackRate,1.05);
     move(h,300,320);
-    assert.equal(h.video.playbackRate,1.5,'horizontal drift cannot switch into seek');
+    assert.equal(h.video.playbackRate,1.05,'horizontal drift cannot switch to seek');
     assert.deepEqual(h.seeks,[]);
     end(h,300,320);
 });
-test('left-edge stationary hold does not rewind, adjacent left region still can',()=>{
+test('repeat gestures preserve 0.05x baseline, rather than rounding to 0.5x',()=>{
+    const h=harness();
+    for(let i=0;i<5;i++){
+        start(h,100);move(h,100,300);end(h,100,300);
+    }
+    assert.equal(h.video.playbackRate,1.25);
+    for(let i=0;i<3;i++){
+        start(h,100);move(h,100,400);end(h,100,400);
+    }
+    assert.equal(h.video.playbackRate,1.10);
+});
+test('speed feedback displays two decimal places even for 1.05x',()=>{
+    const h=harness();
+    start(h,100);move(h,100,300);
+    assert.equal(h.overlayLabel(),'再生速度 1.05×');
+    move(h,100,250);
+    assert.equal(h.overlayLabel(),'再生速度 1.10×');
+    end(h,100,250);
+});
+test('left-edge stationary hold does not rewind, adjacent left region still does',()=>{
     const h=harness();
     start(h,100);
     h.advance(1000);
@@ -410,35 +443,32 @@ test('left-edge stationary hold does not rewind, adjacent left region still can'
     assert.deepEqual(adjacent.seeks,[116.25]);
     end(adjacent,250);
 });
-test('right-side vertical volume and left-side speed gestures stay independent',()=>{
+test('right-edge vertical volume and left-edge speed remain independent',()=>{
     const h=harness();
-    start(h,1100);
-    move(h,1100,200);
+    start(h,1100);move(h,1100,200);
     assert.ok(h.video.volume>.5);
     assert.equal(h.video.playbackRate,1);
     end(h,1100,200);
-    const prior=h.video.volume;
-    start(h,100);
-    move(h,100,300);
-    assert.equal(h.video.playbackRate,1.5);
-    assert.equal(h.video.volume,prior);
+    const before=h.video.volume;
+    start(h,100);move(h,100,300);
+    assert.equal(h.video.playbackRate,1.05);
+    assert.equal(h.video.volume,before);
     end(h,100,300);
 });
-test('pointer-only WebView2 delivers left-edge speed gestures',()=>{
+test('WebView2 pointer-only speed gestures continue to work',()=>{
     const h=harness();
     h.dispatch('pointerdown',{pointerId:1,clientX:100,clientY:350});
     h.dispatch('pointermove',{pointerId:1,clientX:100,clientY:300});
-    assert.equal(h.video.playbackRate,1.5);
+    assert.equal(h.video.playbackRate,1.05);
     h.dispatch('pointerup',{pointerId:1,clientX:100,clientY:300});
     assert.equal(h.activeTimers(),0);
     assert.deepEqual(h.seeks,[]);
 });
-test('speed gestures survive cancellation without unwanted taps',()=>{
+test('speed gesture cancellation never triggers an extra tap',()=>{
     const h=harness();
-    start(h,100);
-    move(h,100,300);
+    start(h,100);move(h,100,300);
     h.dispatch('touchcancel',{changedTouches:[h.point(1,100,300)],touches:[]});
-    assert.equal(h.video.playbackRate,1.5);
+    assert.equal(h.video.playbackRate,1.05);
     assert.equal(h.pauses(),0);
     assert.equal(h.activeTimers(),0);
 });
