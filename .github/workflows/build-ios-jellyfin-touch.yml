@@ -1,0 +1,45 @@
+name: build-ios-jellyfin-touch
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ios-surface-gestures-v01
+    paths:
+      - 'ios-client/**'
+      - 'surface-arm64/controls.js'
+      - '.github/workflows/build-ios-jellyfin-touch.yml'
+jobs:
+  simulator:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate shared controls
+        run: |
+          node --check surface-arm64/controls.js
+          node --test surface-arm64/tests/gestures.test.cjs surface-arm64/tests/touch-runtime.test.cjs
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate iOS Xcode project
+        run: xcodegen generate --spec ios-client/project.yml
+      - name: Build unsigned iPhone/iPad simulator app
+        run: |
+          xcodebuild -project ios-client/JellyfinTouch.xcodeproj -scheme JellyfinTouch \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios-client/DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: Verify bundled controls and package simulator build
+        run: |
+          set -e
+          APP='ios-client/DerivedData/Build/Products/Debug-iphonesimulator/JellyfinTouch.app'
+          test -d "$APP"
+          test -f "$APP/controls.js"
+          cd ios-client/DerivedData/Build/Products/Debug-iphonesimulator
+          zip -r -q "$GITHUB_WORKSPACE/JellyfinTouch-iOS-simulator-v01.zip" JellyfinTouch.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jellyfin-touch-ios-simulator-v01
+          path: JellyfinTouch-iOS-simulator-v01.zip
+          if-no-files-found: error
