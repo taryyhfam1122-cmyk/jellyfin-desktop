@@ -11,9 +11,11 @@
     <PublishTrimmed>false</PublishTrimmed>
     <PublishSingleFile>false</PublishSingleFile>
     <AssemblyName>JellyfinSurfaceARM64</AssemblyName>
+    <ApplicationIcon>..\bundle\win\jellyfin.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <None Update="controls.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="trickplay-preview.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
