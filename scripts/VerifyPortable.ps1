@@ -13,7 +13,8 @@ $required = @(
     'resources/v8_context_snapshot.bin', 'translations/qtwebengine_locales/en-US.pak',
     'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll',
     'Start-MouseControls.cmd', 'MouseControls-README.txt',
-    'Start-TouchControls.cmd', 'TouchControls-README.txt', 'Start-SurfaceCompat.cmd', 'opengl32sw.dll'
+    'Start-TouchControls.cmd', 'TouchControls-README.txt', 'Start-SurfaceCompat.cmd',
+    'Start-SurfaceFast.cmd', 'Start-SurfaceBalanced.cmd', 'SurfaceFast-README.txt', 'opengl32sw.dll'
 )
 foreach ($file in $required) {
     if (-not (Test-Path (Join-Path $stage $file))) { throw "Portable is missing: $file" }
