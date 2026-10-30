@@ -9,17 +9,18 @@ const helper=source.match(/    function seekDelta\(dx\) \{[\s\S]*?\n    \}/);
 assert.ok(helper, 'single-finger seek math function found');
 const seekDelta=vm.runInNewContext('('+helper[0].trim()+')');
 
-test('short drag stays precise and longer drag accelerates',()=>{
+test('v0.6: half the finger travel while preserving distance acceleration',()=>{
     assert.equal(seekDelta(0),0);
-    assert.equal(seekDelta(30),4.5);
-    assert.equal(seekDelta(100),15);
-    assert.equal(seekDelta(200),60);
-    assert.equal(seekDelta(300),105);
-    assert.equal(seekDelta(500),300);
-    assert.equal(seekDelta(-100),-15);
-    assert.equal(seekDelta(-200),-60);
-    assert.equal(seekDelta(-500),-300);
-    assert.equal(seekDelta(150),37.5);
+    assert.equal(seekDelta(10),3);
+    assert.equal(seekDelta(30),9);
+    assert.equal(seekDelta(50),15);
+    assert.equal(seekDelta(100),60);
+    assert.equal(seekDelta(150),105);
+    assert.equal(seekDelta(200),202.5);
+    assert.equal(seekDelta(250),300);
+    assert.equal(seekDelta(-50),-15);
+    assert.equal(seekDelta(-100),-60);
+    assert.equal(seekDelta(-250),-300);
     assert.equal(seekDelta(10000),900,'large drags have safety cap');
 });
 
@@ -51,4 +52,14 @@ test('WebView2 touch and pointer streams and diagnostics remain supported',()=>{
         assert.ok(source.includes("addEventListener('"+event+"'"));
     assert.match(source,/report\('seek-committed'\)/);
     assert.match(source,/report\('seek-live'\)/);
+});
+
+test('center tap requests native fullscreen and retains double tap home',()=>{
+    assert.match(source,/action:'toggle-fullscreen'/);
+    assert.match(source,/action:'stop-home'/);
+    assert.match(source,/report\('center-fullscreen'\)/);
+    assert.match(source,/pendingCenterTap\.timer=setTimeout/);
+    assert.match(source,/clearTimeout\(pendingCenterTap\.timer\)/);
+    assert.match(source,/Math\.max\(Math\.abs\(dx\),Math\.abs\(dy\)\) < 10/);
+    assert.match(source,/Math\.max\(Math\.abs\(dx\),Math\.abs\(dy\)\)<10/);
 });
