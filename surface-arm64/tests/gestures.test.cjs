@@ -71,6 +71,10 @@ test('center tap series maps double to fullscreen and triple to closing the vide
 
 test('left edge speed handler uses 0.5x steps without changing horizontal seek math',()=>{
     assert.match(source,/const SPEED_STEP_PX=50/);
+    assert.match(source,/const SPEED_STEP=0\.05/);
+    assert.match(source,/deltaSteps\*5/);
+    assert.match(source,/Math\.round\(\(v\.playbackRate \|\| 1\)\*20\)\/20/);
+    assert.match(source,/displayed\.toFixed\(2\)/);
     assert.match(source,/const MIN_PLAYBACK_RATE=0\.5/);
     assert.match(source,/const MAX_PLAYBACK_RATE=4\.0/);
     assert.match(source,/function updatePlaybackSpeed\(g,dy\)/);
