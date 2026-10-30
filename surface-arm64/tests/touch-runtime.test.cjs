@@ -35,7 +35,7 @@ function harness(){
     const ctx={
         window,document,location:{origin:'http://jellyfin.test:30013'},
         getComputedStyle:()=>({visibility:'visible'}),innerWidth:1200,innerHeight:800,
-        Map,Set,Number,Math,String,performance:{now:()=>clock},console,
+        Map,Set,Number,Math,String,performance:{now:()=>clock},Date:class extends Date {static now(){return clock;}},console,
         setInterval:(fn,ms)=>{
             const id=++nextId;
             intervals.set(id,{fn,ms,next:clock+ms});
@@ -246,28 +246,83 @@ test('cancelled gesture or window blur stops held seeking',()=>{
     assert.equal(h.activeTimers(),0);
 });
 
-test('center single tap toggles native fullscreen after double tap grace period',()=>{
+test('single center tap toggles play/pause only, never fullscreen or home',()=>{
     const h=harness();
     start(h,500);end(h,500);
-    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
     h.advance(399);
-    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
+    assert.equal(h.pauses(),0);
     h.advance(1);
-    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,1);
-    assert.equal(h.video.paused,false,'center tap does not pause playback');
+    assert.equal(h.video.paused,true);
+    assert.equal(h.pauses(),1);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
     assert.equal(h.messages.filter(m=>m.action==='stop-home').length,0);
-    assert.ok(h.reports.includes('center-fullscreen'));
     assert.deepEqual(h.seeks,[]);
 });
-test('center double tap returns home without toggling fullscreen',()=>{
+test('double center tap toggles native fullscreen only after third-tap grace period',()=>{
     const h=harness();
     start(h,500);end(h,500);
     h.advance(100);
     start(h,500);end(h,500);
-    h.advance(500);
+    h.advance(399);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
+    assert.equal(h.video.paused,false,'no single tap playback toggle on double tap');
+    h.advance(1);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,1);
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,0);
+    assert.equal(h.video.paused,false);
+    h.advance(1000);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,1);
+    assert.ok(h.reports.includes('center-fullscreen'));
+});
+test('triple center tap closes video and returns home without intermediate fullscreen',()=>{
+    const h=harness();
+    start(h,500);end(h,500);
+    h.advance(100);
+    start(h,500);end(h,500);
+    h.advance(100);
+    start(h,500);end(h,500);
     assert.equal(h.messages.filter(m=>m.action==='stop-home').length,1);
     assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
     assert.equal(h.video.paused,true);
+    assert.equal(h.pauses(),1);
+    assert.ok(h.reports.includes('triple-tap-home'));
+    h.advance(1000);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,1);
+});
+test('three spaced taps are not accidentally interpreted as triple tap',()=>{
+    const h=harness();
+    start(h,500);end(h,500);
+    h.advance(100);
+    start(h,500);end(h,500);
+    h.advance(450); // second tap's pending timer resolves as fullscreen
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,1);
+    start(h,500);end(h,500);
+    h.advance(400);
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,0);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,1);
+});
+test('three simultaneous fingers do not trigger video closing command',()=>{
+    const h=harness();
+    start(h,500);
+    h.dispatch('touchstart',{
+        changedTouches:[h.point(2,600),h.point(3,700)],
+        touches:[h.point(1,500),h.point(2,600),h.point(3,700)]
+    });
+    h.dispatch('touchend',{changedTouches:[h.point(1,500),h.point(2,600),h.point(3,700)],touches:[]});
+    h.advance(1000);
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,0);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
+});
+test('pointer-only double and triple center tap follow same touch routing',()=>{
+    const h=harness();
+    const tap=()=>{
+        h.dispatch('pointerdown',{pointerId:1,clientX:500,clientY:350});
+        h.dispatch('pointerup',{pointerId:1,clientX:500,clientY:350});
+    };
+    tap();h.advance(100);tap();h.advance(100);tap();
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,1);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
 });
 test('one-finger 10px starts seeking without needing 15px travel',()=>{
     const h=harness();
