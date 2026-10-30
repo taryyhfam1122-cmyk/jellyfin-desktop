@@ -117,6 +117,24 @@
         return Math.sign(dx) * Math.min(900, seconds);
     }
     function clamp(value, max) { return Math.max(0, Math.min(max, value)); }
+    // Left 15%: each 50 CSS pixels of upward/downward travel changes
+    // playback speed by 0.5x; limits 0.5x..4.0x. Start after 25px.
+    const SPEED_STEP_PX=50;
+    const MIN_PLAYBACK_RATE=0.5;
+    const MAX_PLAYBACK_RATE=4.0;
+    function playbackRateAt(startRate,dy) {
+        const steps=Math.round(-dy/SPEED_STEP_PX);
+        return Math.max(MIN_PLAYBACK_RATE,Math.min(MAX_PLAYBACK_RATE,startRate+steps*.5));
+    }
+    function updatePlaybackSpeed(g,dy) {
+        const rate=playbackRateAt(g.startPlaybackRate,dy);
+        if (rate!==g.v.playbackRate) {
+            try { g.v.playbackRate=rate; report('speed-changed'); }
+            catch (_) { report('speed-error'); }
+        }
+        const displayed=Number.isFinite(g.v.playbackRate) ? g.v.playbackRate : g.startPlaybackRate;
+        showOverlay('再生速度 '+displayed.toFixed(1)+'×');
+    }
     // Update playback while the finger is on screen, at most every 250ms.
     // A stationary finger continues seeking until release; the preview follows each update.
     function liveSeek(g, force=false) {
@@ -239,7 +257,9 @@
             v, count: fingers.size, x: p.x, y:p.y, duration:v.duration,
             start:v.currentTime, target:v.currentTime, volume:v.volume,
             lastSentTarget:v.currentTime, lastSeekAt:-Infinity,
-            mode:null, tap:true, rightEdge:p.x >= innerWidth*.85
+            mode:null, tap:true, rightEdge:p.x >= innerWidth*.85,
+            leftEdge:p.x <= innerWidth*.15,
+            startPlaybackRate:Math.max(.5,Math.min(4,Math.round((v.playbackRate || 1)*2)/2))
         };
         const current=gesture;
         startHold(current,()=>gesture===current && fingers.size===1 && !touchStream);
@@ -281,12 +301,15 @@
         if (!g.mode && Math.max(Math.abs(dx),Math.abs(dy)) < 10) return;
         g.tap=false;
         if (!g.mode) g.mode = g.rightEdge && Math.abs(dy)>Math.abs(dx) ? 'volume'
+                            : g.leftEdge && Math.abs(dy)>Math.abs(dx) ? 'speed'
                             : Math.abs(dx)>=Math.abs(dy) ? 'seek' : 'ignore';
         if (g.mode === 'volume') {
             const volume=clamp(g.volume-dy/(innerHeight*.6),1);
             g.v.volume=volume;
             g.v.muted=false;
             showOverlay('音量 '+Math.round(volume*100)+'%');
+        } else if (g.mode === 'speed') {
+            updatePlaybackSpeed(g,dy);
         } else if (g.mode === 'seek') {
             updateSwipe(g,dx);
         }
@@ -350,7 +373,9 @@
             duration:v.duration, start:v.currentTime, target:v.currentTime,
             lastSentTarget:v.currentTime, lastSeekAt:-Infinity,
             volume:v.volume, mode:null, tap:true,
-            rightEdge:p.x >= innerWidth * .85};
+            rightEdge:p.x >= innerWidth * .85,
+            leftEdge:p.x <= innerWidth * .15,
+            startPlaybackRate:Math.max(.5,Math.min(4,Math.round((v.playbackRate || 1)*2)/2))};
         const current=touchGesture;
         startHold(current,()=>touchGesture===current && touchStream && !touchBlocked && touchPoints.size===1);
         window.__jfdTrickplayPreview?.prefetch(v.currentTime,v.duration);
@@ -403,11 +428,14 @@
         if (!g.mode && Math.max(Math.abs(dx),Math.abs(dy))<10) return;
         g.tap=false;
         if (!g.mode) g.mode=g.rightEdge && Math.abs(dy)>Math.abs(dx) ? 'volume'
+            : g.leftEdge && Math.abs(dy)>Math.abs(dx) ? 'speed'
             : Math.abs(dx)>=Math.abs(dy) ? 'seek':'ignore';
         if (g.mode==='volume') {
             g.v.volume=clamp(g.volume-dy/(innerHeight*.6),1);
             g.v.muted=false;
             showOverlay('音量 '+Math.round(g.v.volume*100)+'%');
+        } else if (g.mode==='speed') {
+            updatePlaybackSpeed(g,dy);
         } else if (g.mode==='seek') {
             updateSwipe(g,dx);
         }
