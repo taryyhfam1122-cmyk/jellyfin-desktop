@@ -132,9 +132,14 @@ public sealed class SurfaceForm : Form
                     if (!root.TryGetProperty("type", out var type)) return;
                     if (type.GetString() == "jfd-player-action")
                     {
-                        if (root.TryGetProperty("action", out var action) &&
-                            action.GetString() == "stop-home")
-                            _ = StopAndHomeAsync();
+                        if (root.TryGetProperty("action", out var action))
+                        {
+                            var command = action.GetString();
+                            if (command == "stop-home")
+                                _ = StopAndHomeAsync();
+                            else if (command == "toggle-fullscreen")
+                                ToggleFullscreen();
+                        }
                         return;
                     }
                     if (type.GetString() != "jfd-touch-status" ||
@@ -143,7 +148,7 @@ public sealed class SurfaceForm : Form
                     if (name is "script-loaded" or "gesture-start" or "touch-start" or
                         "seek-preview" or "seek-committed" or "seek-error" or
                         "pointer-cancel" or "trickplay-displayed" or "trickplay-unavailable" or
-                        "trickplay-error" or "double-tap-home")
+                        "trickplay-error" or "double-tap-home" or "center-fullscreen")
                         Log("Touch status: " + name);
                 }
                 catch (JsonException) { }
