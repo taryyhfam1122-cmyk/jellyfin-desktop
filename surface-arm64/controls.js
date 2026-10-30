@@ -13,48 +13,64 @@
     let touchBlocked = false;
     let pendingCenterTap = null;
 
-    // A delayed center tap toggles the native window's fullscreen state.
-    // Double center tap continues to stop playback and return home.
+    // One center tap: playback toggle; double: native fullscreen toggle;
+    // triple: stop the video and return to Jellyfin home.
+    // Delay the double-tap action to leave room for a third tap.
+    const CENTER_TAP_WINDOW_MS=400;
     function playPause(v) {
         if (v.paused) v.play().catch(()=>{}); else v.pause();
     }
     function toggleFullscreen() {
-        // Request a native WinForms fullscreen transition; do not use the
-        // video's HTML fullscreen API, which would hide native exit controls.
+        // Use native fullscreen so the close/home toolbar stays accessible.
         try {
             window.chrome?.webview?.postMessage({type:'jfd-player-action',action:'toggle-fullscreen'});
             report('center-fullscreen');
-        } catch (_) { }
+        } catch (_) {}
+    }
+    function closeVideoHome(v) {
+        v.pause();
+        report('triple-tap-home');
+        // Preserve Jellyfin Web playback reporting through native SPA navigation.
+        try {
+            window.chrome?.webview?.postMessage({type:'jfd-player-action',action:'stop-home'});
+        } catch (_) {}
+    }
+    function resolveCenterTap(entry) {
+        if (pendingCenterTap!==entry) return;
+        pendingCenterTap=null;
+        if(entry.count===1) playPause(entry.v);
+        else if(entry.count===2) toggleFullscreen();
     }
     function finishTap(g) {
-        if (!g || g.count !== 1) return;
-        const x=g.x,y=g.y,now=Date.now();
-        const center=x>=innerWidth*.32&&x<=innerWidth*.68&&
-                     y>=innerHeight*.25&&y<=innerHeight*.75;
-        if (center && pendingCenterTap && now-pendingCenterTap.at<=400 &&
-            Math.abs(x-pendingCenterTap.x)<85 && Math.abs(y-pendingCenterTap.y)<85) {
-            clearTimeout(pendingCenterTap.timer);
-            pendingCenterTap=null;
-            g.v.pause();
-            report('double-tap-home');
-            // Jellyfin Web stops & reports playback on SPA viewbeforehide.
-            try {window.chrome?.webview?.postMessage({type:'jfd-player-action',action:'stop-home'});}
-            catch (_) {}
+        if (!g || g.count!==1) return;
+        const x=g.x, y=g.y, now=Date.now();
+        const center=x>=innerWidth*.32 && x<=innerWidth*.68 &&
+                     y>=innerHeight*.25 && y<=innerHeight*.75;
+        const pending=pendingCenterTap;
+        const sameSeries=center && pending && pending.v===g.v &&
+            now-pending.at<=CENTER_TAP_WINDOW_MS &&
+            Math.abs(x-pending.x)<85 && Math.abs(y-pending.y)<85;
+        if (sameSeries) {
+            clearTimeout(pending.timer);
+            pending.count++;
+            pending.x=x; pending.y=y; pending.at=now;
+            if (pending.count===3) {
+                pendingCenterTap=null;
+                closeVideoHome(g.v);
+            } else {
+                // No fullscreen transition yet: a third tap may follow.
+                pending.timer=setTimeout(()=>resolveCenterTap(pending),CENTER_TAP_WINDOW_MS);
+            }
             return;
         }
-        if(pendingCenterTap) {
-            clearTimeout(pendingCenterTap.timer);
-            toggleFullscreen();
-            pendingCenterTap=null;
+        if (pending) {
+            clearTimeout(pending.timer);
+            resolveCenterTap(pending);
         }
         if(!center){playPause(g.v);return;}
-        const entry={v:g.v,x,y,at:now,timer:0};
+        const entry={v:g.v,x,y,at:now,count:1,timer:null};
         pendingCenterTap=entry;
-        entry.timer=setTimeout(()=>{
-            if(pendingCenterTap!==entry)return;
-            pendingCenterTap=null;
-            toggleFullscreen();
-        },400);
+        entry.timer=setTimeout(()=>resolveCenterTap(entry),CENTER_TAP_WINDOW_MS);
     }
 
     // Chromium may turn a pointer stream into a scroll gesture and send
