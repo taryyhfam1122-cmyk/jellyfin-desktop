@@ -5,10 +5,12 @@
     if (location.origin !== "__JFD_SERVER_ORIGIN__" || window.__jfdSurfaceTouchV1) return;
     window.__jfdSurfaceTouchV1 = true;
     const fingers = new Map();
+    const blockedPointers = new Set();
     let gesture = null;
     let suppressClickUntil = 0;
     let overlay = null;
     let touchStream = false;
+    let touchBlocked = false;
     let pendingCenterTap = null;
 
     // A delayed single center tap permits double tap without pausing first.
@@ -74,8 +76,35 @@
     }
     report('script-loaded');
 
-    function seekDelta(dx, count) { return dx * (count === 2 ? .9 : .15); }
+    // Distance-dependent precision for a single finger, expressed in CSS px.
+    // 30px=4.5s, 100px=15s, 200px=60s, 300px=105s, 500px=300s.
+    function seekDelta(dx) {
+        const distance = Math.abs(dx);
+        const stops = [[0,0],[100,15],[200,60],[300,105],[500,300]];
+        let seconds = 300 + (distance - 500) * .975;
+        for (let i=1; i<stops.length; i++) {
+            if (distance <= stops[i][0]) {
+                const [x0,y0] = stops[i-1], [x1,y1] = stops[i];
+                seconds = y0 + (distance-x0)*(y1-y0)/(x1-x0);
+                break;
+            }
+        }
+        return Math.sign(dx) * Math.min(900, seconds);
+    }
     function clamp(value, max) { return Math.max(0, Math.min(max, value)); }
+    // Update playback while the finger is on screen, at most every 250ms.
+    // The trickplay preview follows every move; no seeks occur while stationary.
+    function liveSeek(g, force=false) {
+        const now = performance.now();
+        if (!force && now-g.lastSeekAt < 250) return;
+        if (Math.abs(g.target-g.lastSentTarget) < .5) return;
+        try {
+            g.v.currentTime=g.target;
+            g.lastSentTarget=g.target;
+            g.lastSeekAt=now;
+            report('seek-live');
+        } catch (_) { report('seek-error'); }
+    }
     function video() {
         const elements = [...document.querySelectorAll('.videoPlayerContainer video, video')];
         return elements.find(v => {
@@ -134,15 +163,28 @@
         gesture = {
             v, count: fingers.size, x: p.x, y:p.y, duration:v.duration,
             start:v.currentTime, target:v.currentTime, volume:v.volume,
+            lastSentTarget:v.currentTime, lastSeekAt:-Infinity,
             mode:null, tap:true, rightEdge:p.x >= innerWidth*.85
         };
         window.__jfdTrickplayPreview?.prefetch(v.currentTime,v.duration);
     }
     window.addEventListener('pointerdown', e => {
         if (e.pointerType !== 'touch' || touchStream) return;
+        if (blockedPointers.size) {
+            blockedPointers.add(e.pointerId);
+            e.preventDefault(); e.stopImmediatePropagation();
+            return;
+        }
         const v = video();
         if (!v || (!fingers.size && !inVideoArea(e, v))) return;
-        if (fingers.size >= 2) {gesture=null; fingers.clear(); hideOverlay(); return;}
+        if (fingers.size) {
+            // Multi-touch cancels the gesture until *all* fingers are up.
+            for (const id of fingers.keys()) blockedPointers.add(id);
+            blockedPointers.add(e.pointerId);
+            gesture=null; fingers.clear(); hideOverlay();
+            e.preventDefault(); e.stopImmediatePropagation();
+            return;
+        }
         e.preventDefault();
         e.stopImmediatePropagation();
         fingers.set(e.pointerId, {x:e.clientX, y:e.clientY});
@@ -158,7 +200,7 @@
         const g=gesture;
         if (!g || g.v !== video() || fingers.size !== g.count) return;
         const p=centroid(), dx=p.x-g.x, dy=p.y-g.y;
-        if (!g.mode && Math.max(Math.abs(dx),Math.abs(dy)) < 10) return;
+        if (!g.mode && Math.max(Math.abs(dx),Math.abs(dy)) < 15) return;
         g.tap=false;
         if (!g.mode) g.mode = g.rightEdge && Math.abs(dy)>Math.abs(dx) ? 'volume'
                             : Math.abs(dx)>=Math.abs(dy) ? 'seek' : 'ignore';
@@ -168,11 +210,10 @@
             g.v.muted=false;
             showOverlay('音量 '+Math.round(volume*100)+'%');
         } else if (g.mode === 'seek') {
-            g.target=clamp(g.start+seekDelta(dx,g.count),g.duration-.5);
-            // Preview the intended time without triggering repeated decoder
-            // seeks over Wi-Fi: commit exactly once on finger release.
+            g.target=clamp(g.start+seekDelta(dx),g.duration-.5);
             report('seek-preview');
             showSeekOverlay(g.target,g.duration);
+            liveSeek(g);
         }
     }, {capture:true, passive:false});
 
@@ -182,7 +223,8 @@
         e.stopImmediatePropagation();
         if (!cancelled && gesture && gesture.v === video()) {
             if (gesture.mode==='seek') {
-                try { gesture.v.currentTime=gesture.target; report('seek-committed'); } catch (_) { report('seek-error'); }
+                liveSeek(gesture,true);
+                report('seek-committed');
             } else if (gesture.tap && gesture.count===1) {
                 finishTap(gesture);
             }
@@ -194,8 +236,16 @@
         if (fingers.size) fingers.clear();
         suppressClickUntil=performance.now()+350;
     }
-    window.addEventListener('pointerup', e=>{ if (!touchStream) endGesture(e,false); }, {capture:true,passive:false});
+    window.addEventListener('pointerup', e=>{
+        if (blockedPointers.delete(e.pointerId)) {
+            e.preventDefault(); e.stopImmediatePropagation();
+            suppressClickUntil=performance.now()+350;
+            return;
+        }
+        if (!touchStream) endGesture(e,false);
+    }, {capture:true,passive:false});
     window.addEventListener('pointercancel', e=>{
+        if (blockedPointers.delete(e.pointerId)) return;
         if (!touchStream && fingers.has(e.pointerId)) {
             report('pointer-cancel');
             endGesture(e,true);
@@ -220,6 +270,7 @@
         const p = touchCentroid();
         touchGesture = {v, count:touchPoints.size, x:p.x, y:p.y,
             duration:v.duration, start:v.currentTime, target:v.currentTime,
+            lastSentTarget:v.currentTime, lastSeekAt:-Infinity,
             volume:v.volume, mode:null, tap:true,
             rightEdge:p.x >= innerWidth * .85};
         window.__jfdTrickplayPreview?.prefetch(v.currentTime,v.duration);
@@ -227,17 +278,35 @@
     }
     window.addEventListener('touchstart', e => {
         const v=video();
-        if (!v || touchPoints.size >= 2) return;
+        if (!v) return;
+        if (touchBlocked) {
+            e.preventDefault(); e.stopImmediatePropagation();
+            return;
+        }
+        if ((e.touches?.length ?? 0)>1 || touchPoints.size + e.changedTouches.length>1) {
+            if (touchStream || touchPoints.size) {
+                touchBlocked=true;
+                touchStream=true;
+                touchGesture=null;
+                touchPoints.clear();
+                fingers.clear();
+                blockedPointers.clear();
+                gesture=null;
+                hideOverlay();
+                e.preventDefault(); e.stopImmediatePropagation();
+            }
+            return;
+        }
         const t = e.changedTouches[0];
         if (!t) return;
         if (!touchPoints.size && !inVideoArea({clientX:t.clientX, clientY:t.clientY, target:e.target},v)) return;
         e.preventDefault(); e.stopImmediatePropagation();
         touchStream=true;
         fingers.clear();
+        blockedPointers.clear();
         gesture=null;
         hideOverlay();
-        for (const p of e.changedTouches) if (touchPoints.size < 2)
-            touchPoints.set(p.identifier,{x:p.clientX,y:p.clientY});
+        touchPoints.set(t.identifier,{x:t.clientX,y:t.clientY});
         touchBaseline();
     },{capture:true,passive:false});
 
@@ -249,7 +318,7 @@
         const g=touchGesture;
         if (!g || g.v !== video() || touchPoints.size!==g.count) return;
         const p=touchCentroid(), dx=p.x-g.x, dy=p.y-g.y;
-        if (!g.mode && Math.max(Math.abs(dx),Math.abs(dy))<10) return;
+        if (!g.mode && Math.max(Math.abs(dx),Math.abs(dy))<15) return;
         g.tap=false;
         if (!g.mode) g.mode=g.rightEdge && Math.abs(dy)>Math.abs(dx) ? 'volume'
             : Math.abs(dx)>=Math.abs(dy) ? 'seek':'ignore';
@@ -258,9 +327,10 @@
             g.v.muted=false;
             showOverlay('音量 '+Math.round(g.v.volume*100)+'%');
         } else if (g.mode==='seek') {
-            g.target=clamp(g.start+seekDelta(dx,g.count),g.duration-.5);
+            g.target=clamp(g.start+seekDelta(dx),g.duration-.5);
             report('seek-preview');
             showSeekOverlay(g.target,g.duration);
+            liveSeek(g);
         }
     },{capture:true,passive:false});
 
@@ -270,7 +340,8 @@
         const g=touchGesture;
         if (!cancelled && g && g.v===video()) {
             if (g.mode==='seek') {
-                try {g.v.currentTime=g.target;report('seek-committed');} catch (_) {report('seek-error');}
+                liveSeek(g,true);
+                report('seek-committed');
             } else if (g.tap && g.count===1) {
                 finishTap(g);
             }
@@ -281,16 +352,30 @@
         hideOverlay();
         suppressClickUntil=performance.now()+350;
     }
-    window.addEventListener('touchend', e=>endTouch(e,false),{capture:true,passive:false});
-    window.addEventListener('touchcancel', e=>endTouch(e,true),{capture:true,passive:false});
+    function finishTouchStream(e,cancelled) {
+        if (touchBlocked) {
+            e.preventDefault(); e.stopImmediatePropagation();
+            if (!e.touches || !e.touches.length) {
+                touchBlocked=false;
+                touchStream=false;
+                touchPoints.clear();
+                touchGesture=null;
+                suppressClickUntil=performance.now()+350;
+            }
+            return;
+        }
+        endTouch(e,cancelled);
+    }
+    window.addEventListener('touchend', e=>finishTouchStream(e,false),{capture:true,passive:false});
+    window.addEventListener('touchcancel', e=>finishTouchStream(e,true),{capture:true,passive:false});
     window.addEventListener('click', e=>{
         if (performance.now()<suppressClickUntil) {
             e.preventDefault(); e.stopImmediatePropagation();
         }
     },true);
     window.addEventListener('blur',()=>{
-        fingers.clear(); gesture=null;
-        touchPoints.clear(); touchGesture=null; touchStream=false;
+        fingers.clear(); blockedPointers.clear(); gesture=null;
+        touchPoints.clear(); touchGesture=null; touchStream=false; touchBlocked=false;
         hideOverlay();
         if(pendingCenterTap) {
             clearTimeout(pendingCenterTap.timer);
