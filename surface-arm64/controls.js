@@ -136,6 +136,7 @@
             start:v.currentTime, target:v.currentTime, volume:v.volume,
             mode:null, tap:true, rightEdge:p.x >= innerWidth*.85
         };
+        window.__jfdTrickplayPreview?.prefetch(v.currentTime,v.duration);
     }
     window.addEventListener('pointerdown', e => {
         if (e.pointerType !== 'touch' || touchStream) return;
@@ -221,6 +222,7 @@
             duration:v.duration, start:v.currentTime, target:v.currentTime,
             volume:v.volume, mode:null, tap:true,
             rightEdge:p.x >= innerWidth * .85};
+        window.__jfdTrickplayPreview?.prefetch(v.currentTime,v.duration);
         report('touch-start');
     }
     window.addEventListener('touchstart', e => {
