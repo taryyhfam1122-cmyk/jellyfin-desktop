@@ -117,14 +117,19 @@
         return Math.sign(dx) * Math.min(900, seconds);
     }
     function clamp(value, max) { return Math.max(0, Math.min(max, value)); }
-    // Left 15%: each 50 CSS pixels of upward/downward travel changes
-    // playback speed by 0.5x; limits 0.5x..4.0x. Start after 25px.
+    // Left 15%: each 50 CSS pixels of vertical travel changes playback speed
+    // by exactly 0.05x. Keep 0.5x..4.0x and the original 25px threshold.
     const SPEED_STEP_PX=50;
+    const SPEED_STEP=0.05;
     const MIN_PLAYBACK_RATE=0.5;
     const MAX_PLAYBACK_RATE=4.0;
     function playbackRateAt(startRate,dy) {
-        const steps=Math.round(-dy/SPEED_STEP_PX);
-        return Math.max(MIN_PLAYBACK_RATE,Math.min(MAX_PLAYBACK_RATE,startRate+steps*.5));
+        // Use integer hundredths to avoid accumulating floating-point errors.
+        const deltaSteps=Math.round(-dy/SPEED_STEP_PX);
+        const baseHundredths=Math.round(startRate*100);
+        const nextHundredths=Math.max(MIN_PLAYBACK_RATE*100,
+            Math.min(MAX_PLAYBACK_RATE*100,baseHundredths+deltaSteps*5));
+        return nextHundredths/100;
     }
     function updatePlaybackSpeed(g,dy) {
         const rate=playbackRateAt(g.startPlaybackRate,dy);
@@ -133,7 +138,7 @@
             catch (_) { report('speed-error'); }
         }
         const displayed=Number.isFinite(g.v.playbackRate) ? g.v.playbackRate : g.startPlaybackRate;
-        showOverlay('再生速度 '+displayed.toFixed(1)+'×');
+        showOverlay('再生速度 '+displayed.toFixed(2)+'×');
     }
     // Update playback while the finger is on screen, at most every 250ms.
     // A stationary finger continues seeking until release; the preview follows each update.
@@ -261,7 +266,7 @@
             lastSentTarget:v.currentTime, lastSeekAt:-Infinity,
             mode:null, tap:true, rightEdge:p.x >= innerWidth*.85,
             leftEdge:p.x <= innerWidth*.15,
-            startPlaybackRate:Math.max(.5,Math.min(4,Math.round((v.playbackRate || 1)*2)/2))
+            startPlaybackRate:Math.max(.5,Math.min(4,Math.round((v.playbackRate || 1)*20)/20))
         };
         const current=gesture;
         startHold(current,()=>gesture===current && fingers.size===1 && !touchStream);
@@ -377,7 +382,7 @@
             volume:v.volume, mode:null, tap:true,
             rightEdge:p.x >= innerWidth * .85,
             leftEdge:p.x <= innerWidth * .15,
-            startPlaybackRate:Math.max(.5,Math.min(4,Math.round((v.playbackRate || 1)*2)/2))};
+            startPlaybackRate:Math.max(.5,Math.min(4,Math.round((v.playbackRate || 1)*20)/20))};
         const current=touchGesture;
         startHold(current,()=>touchGesture===current && touchStream && !touchBlocked && touchPoints.size===1);
         window.__jfdTrickplayPreview?.prefetch(v.currentTime,v.duration);
