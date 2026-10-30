@@ -630,6 +630,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     // Dependencies are supplied by the bundled plugins, not jellyfin-web globals.
     window.jfdMouseControls = {
         setManager(manager) { playbackManager = manager; },
+        preloadFrame(player) { preloadFrame(player); },
         setPlayer(player) {
             activePlayer = player;
             resetFramePreview();
@@ -731,6 +732,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     const FRAME_TILE_CACHE_LIMIT = 4;
     let framePreview = null;
     let framePreviewGeneration = 0;
+    const MINI_PREVIEW_WIDTH = 320;
 
     function hideFramePreview() {
         framePreviewGeneration++;
@@ -740,6 +742,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     function resetFramePreview() {
         hideFramePreview();
         frameTileCache.clear();
+        if (framePreview) framePreview.lastFrameKey = null;
     }
 
     function frameSpec(s) {
@@ -783,7 +786,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             + '/Trickplay/' + encodeURIComponent(String(widths[0])) + '/' + sheet + '.jpg', source.origin);
         url.searchParams.set('api_key', tokenEntry[1]);
         if (mediaSourceId) url.searchParams.set('MediaSourceId', mediaSourceId);
-        return {url: url.href, x, y, w, h};
+        return {url: url.href, x, y, w, h, index, sheet, perSheet, count};
     }
 
     function ensureFramePreview() {
@@ -797,17 +800,31 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             canvas.setAttribute('aria-hidden', 'true');
             canvas.style.cssText = 'display:block;max-width:100vw;max-height:100vh';
             root.appendChild(canvas);
-            framePreview = {root, canvas};
+            framePreview = {root, canvas, lastFrameKey: null};
         }
         if (!framePreview.root.isConnected) document.body.appendChild(framePreview.root);
         return framePreview;
     }
 
     function cachedFrameTile(url) {
-        if (frameTileCache.has(url)) return frameTileCache.get(url);
+        if (frameTileCache.has(url)) {
+            const cached = frameTileCache.get(url);
+            // Refresh the tile's LRU position.
+            frameTileCache.delete(url);
+            frameTileCache.set(url, cached);
+            return cached;
+        }
         const promise = new Promise((resolve, reject) => {
             const img = new Image();
-            img.onload = () => resolve(img);
+            img.onload = () => {
+                // Resolve after Chromium has decoded the JPEG, rather than
+                // making the first on-screen draw decode a 960px*4x4 sheet.
+                if (typeof img.decode === 'function') {
+                    Promise.resolve(img.decode()).then(() => resolve(img), () => resolve(img));
+                } else {
+                    resolve(img);
+                }
+            };
             img.onerror = () => reject(new Error('trickplay tile failed to load'));
             img.src = url;
         });
@@ -815,8 +832,17 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         if (frameTileCache.size > FRAME_TILE_CACHE_LIMIT) {
             frameTileCache.delete(frameTileCache.keys().next().value);
         }
-        promise.catch(() => { if (frameTileCache.get(url) === promise) frameTileCache.delete(url); });
+        promise.catch(() => {
+            if (frameTileCache.get(url) === promise) frameTileCache.delete(url);
+        });
         return promise;
+    }
+
+    function preloadFrame(player) {
+        if (!player?._currentPlayOptions) return;
+        const position = Number(player.currentTime()) || Number(player._currentPlayOptions.playerStartPositionTicks || 0) / 10000;
+        const spec = frameSpec({player, target: position});
+        if (spec) cachedFrameTile(spec.url).catch(() => {});
     }
 
     function showFramePreview(s) {
@@ -824,6 +850,8 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         if (!spec) { hideFramePreview(); return; }
         const preview = ensureFramePreview();
         if (!preview) return;
+        const key = spec.url + ':' + spec.index;
+        if (preview.root.style.display === 'flex' && preview.lastFrameKey === key) return;
         const generation = ++framePreviewGeneration;
         cachedFrameTile(spec.url).then(img => {
             if (framePreviewGeneration !== generation || activePlayer !== s.player) return;
@@ -843,6 +871,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             context.imageSmoothingQuality = 'high';
             context.clearRect(0, 0, w, h);
             context.drawImage(img, spec.x, spec.y, spec.w, spec.h, 0, 0, w, h);
+            preview.lastFrameKey = key;
             preview.root.style.display = 'flex';
         }).catch(() => {
             // No generated image or an authorization problem: keep normal video
@@ -851,15 +880,25 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         });
     }
 
-    function seek(s) {
+    // Separate preview from decoding. A native MPV seek every 80ms competes
+    // with high-res JPEG loading and can make the preview unresponsive.
+    // During dragging, preview images and the timestamp update immediately.
+    // Commit the native seek exactly once at release, so existing play/pause,
+    // position reporting and subsequent playback still use real libmpv.
+    function seek(s, commit = false) {
         if (activePlayer !== s.player || !s.player.currentSrc()) return;
-        // Keep the web player's final-position cache current even if Stop follows
-        // immediately, before the next native positionUpdate signal (500ms).
+        const hasTrickplay = Boolean(frameSpec(s));
+        if (!commit && hasTrickplay) {
+            showSeek(s);
+            showFramePreview(s);
+            return;
+        }
+        // Keep Jellyfin's final-position cache current before stop/close.
         s.player._currentTime = Math.round(s.target);
         s.native.seekTo(Math.round(s.target));
         s.player.events.trigger(s.player, 'timeupdate');
         showSeek(s);
-        showFramePreview(s);
+        if (!commit) showFramePreview(s);
     }
 
     function resetDrag() {
@@ -992,7 +1031,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         if (s.dragging) {
             e.preventDefault();
             e.stopImmediatePropagation();
-            try { seek(s); }
+            try { seek(s, true); }
             catch (err) { log('seek on release failed', {message: String(err)}); }
             log('drag completed', {button: s.button, deltaMs: Math.round(s.target - s.start), toMs: Math.round(s.target)});
             ignoreNextClick = true;
@@ -1069,6 +1108,39 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         } catch (err) { log('volume change failed', {message: String(err)}); }
     }, {capture: true, passive: false});
     window.addEventListener('blur', () => { resetDrag(); clearTimeout(singleClickTimer); });
+
+    // Jellyfin Web 10.11 sets the seekbar bubble's thumb to the source
+    // trickplay width (e.g. 960px). Scale its *layout and background*
+    // together; cropping the element to 320px would show the wrong sprite.
+    // Chromium's zoom scales the original background-position offsets too.
+    function miniatureScale(width, viewportWidth) {
+        if (!(width > 0)) return 1;
+        return Math.min(1, MINI_PREVIEW_WIDTH / width, Math.max(1, viewportWidth - 32) / width);
+    }
+
+    function resizeSeekbarPreview() {
+        document.querySelectorAll('.chapterThumbContainer .chapterThumbWrapper').forEach(wrapper => {
+            const original = Number.parseFloat(wrapper.style.width);
+            const scale = miniatureScale(original, window.innerWidth);
+            if (Number(wrapper.style.zoom || 1) !== scale) wrapper.style.zoom = String(scale);
+        });
+    }
+
+    function watchSeekbarPreviews() {
+        if (!document.body || typeof MutationObserver === 'undefined') return;
+        const observer = new MutationObserver(records => {
+            const added = records.some(record => Array.from(record.addedNodes).some(node =>
+                node.nodeType === 1 && (
+                    node.matches?.('.chapterThumbContainer,.chapterThumbWrapper') ||
+                    node.querySelector?.('.chapterThumbContainer .chapterThumbWrapper')
+                )));
+            if (added) resizeSeekbarPreview();
+        });
+        observer.observe(document.body, {childList: true, subtree: true});
+        resizeSeekbarPreview();
+    }
+    if (document.body) watchSeekbarPreviews();
+    else document.addEventListener('DOMContentLoaded', watchSeekbarPreviews, {once: true});
 
     // Touch v0.1: a separate gesture state; the mouse v0.5 math is unchanged.
     const fingers = new Map();
@@ -1179,7 +1251,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         touchConsume(e); touchMove(e);
         const s=touchGesture;
         if (s && !touchBlocked && activePlayer===s.player) {
-            if (s.mode==='seek') seek(s);
+            if (s.mode==='seek') seek(s, true);
             else if (s.tap && s.count===1) {
                 if (s.player.paused()) s.player.unpause(); else s.player.pause();
             }
