@@ -338,3 +338,33 @@ test('surface parity: right side changes volume without changing speed',async()=
     assert.equal(s.player.getPlaybackRate(),1);
     finger(s,'up',1,900,300);
 });
+
+test('desktop mouse: left-edge vertical drag changes playback speed by 0.05x',async()=>{
+    const s=await setup();
+    s.emit('pointerdown',{button:0,clientX:100,clientY:500});
+    s.emit('pointermove',{button:0,buttons:1,clientX:100,clientY:450});
+    assert.equal(s.player.getPlaybackRate(),1.05);
+    s.emit('pointermove',{button:0,buttons:1,clientX:100,clientY:400});
+    assert.equal(s.player.getPlaybackRate(),1.1);
+    s.emit('pointerup',{button:0,buttons:0,clientX:100,clientY:400});
+    assert.equal(s.calls.filter(c=>c[0]==='seekTo').length,0);
+    assert.equal(s.calls.filter(c=>c[0]==='pause').length,0);
+});
+test('desktop mouse: right-edge vertical drag controls volume, not speed',async()=>{
+    const s=await setup();
+    s.player._volume=50;
+    s.emit('pointerdown',{button:0,clientX:900,clientY:500});
+    s.emit('pointermove',{button:0,buttons:1,clientX:900,clientY:350});
+    assert.ok(s.player.getVolume()>50);
+    assert.equal(s.player.getPlaybackRate(),1);
+    s.emit('pointerup',{button:0,buttons:0,clientX:900,clientY:350});
+    assert.equal(s.calls.filter(c=>c[0]==='seekTo').length,0);
+});
+test('desktop mouse: edge horizontal drag retains original seek behavior',async()=>{
+    const s=await setup();
+    s.emit('pointerdown',{button:0,clientX:100,clientY:500});
+    s.emit('pointermove',{button:0,buttons:1,clientX:200,clientY:500});
+    s.emit('pointerup',{button:0,buttons:0,clientX:200,clientY:500});
+    assert.equal(s.player.currentTime(),135000);
+    assert.equal(s.player.getPlaybackRate(),1);
+});
