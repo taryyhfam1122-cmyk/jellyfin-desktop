@@ -54,11 +54,16 @@ test('WebView2 touch and pointer streams and diagnostics remain supported',()=>{
     assert.match(source,/report\('seek-live'\)/);
 });
 
-test('center tap requests native fullscreen and retains double tap home',()=>{
+test('center tap series maps double to fullscreen and triple to closing the video',()=>{
+    assert.match(source,/const CENTER_TAP_WINDOW_MS=400/);
+    assert.match(source,/pending\.count\+\+/);
+    assert.match(source,/pending\.count===3/);
+    assert.match(source,/function toggleFullscreen\(\)/);
+    assert.match(source,/function closeVideoHome\(v\)/);
     assert.match(source,/action:'toggle-fullscreen'/);
     assert.match(source,/action:'stop-home'/);
-    assert.match(source,/report\('center-fullscreen'\)/);
-    assert.match(source,/pendingCenterTap\.timer=setTimeout/);
+    assert.match(source,/report\('triple-tap-home'\)/);
+    assert.match(source,/clearTimeout\(pending\.timer\)/);
     assert.match(source,/clearTimeout\(pendingCenterTap\.timer\)/);
     assert.match(source,/Math\.max\(Math\.abs\(dx\),Math\.abs\(dy\)\) < 10/);
     assert.match(source,/Math\.max\(Math\.abs\(dx\),Math\.abs\(dy\)\)<10/);
