@@ -720,6 +720,34 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         osdTimer = setTimeout(() => { if (osd) osd.style.display = 'none'; }, 1000);
     }
 
+    // Native-frame preview: keep libmpv's decoded video in the player viewport.
+    // Unlike trickplay, this uses the actual source resolution; no scaled
+    // 320px sprite is drawn. Seeking a remote file may take longer.
+    function beginNativeFramePreview(s) {
+        if (s.nativeFramePreview) return;
+        s.nativeFramePreview = true;
+        s.resumeAfterFramePreview = false;
+        try {
+            // Pause only after an actual seek gesture has crossed its threshold.
+            // A tap keeps the exact original click behaviour.
+            s.resumeAfterFramePreview = !s.player.paused() && !nativePaused;
+            if (s.resumeAfterFramePreview) s.player.pause();
+        } catch (err) {
+            log('native frame preview pause failed', {message: String(err)});
+        }
+    }
+
+    function endNativeFramePreview(s) {
+        if (!s?.nativeFramePreview) return;
+        s.nativeFramePreview = false;
+        if (!s.resumeAfterFramePreview) return;
+        s.resumeAfterFramePreview = false;
+        // A stop, next video or a lost session must never resurrect playback.
+        if (activePlayer !== s.player || nativeDuration <= 0 || !s.player.currentSrc()) return;
+        try { s.player.unpause(); }
+        catch (err) { log('native frame preview resume failed', {message: String(err)}); }
+    }
+
     function seek(s) {
         if (activePlayer !== s.player || !s.player.currentSrc()) return;
         // Keep the web player's final-position cache current even if Stop follows
@@ -735,6 +763,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         active = null;
         if (!s) return;
         clearInterval(s.holdTimer);
+        endNativeFramePreview(s);
         try {
             if (s.captureTarget?.hasPointerCapture(s.pointerId)) {
                 s.captureTarget.releasePointerCapture(s.pointerId);
@@ -759,6 +788,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         if (!s.dragging) {
             if (Math.abs(dx) < DRAG_THRESHOLD) return;
             s.dragging = true;
+            beginNativeFramePreview(s);
             s.lastTick = now;
             s.holdAfter = now + HOLD_DELAY_MS;
             try {
@@ -945,6 +975,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     let stopButton = null;
 
     function cancelTouch() {
+        endNativeFramePreview(touchGesture);
         touchGesture = null;
         fingers.clear();
         touchBlocked = false;
@@ -1016,6 +1047,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             s.player.setVolume(value);
             log('touch volume', {volume:value});
         } else if (s.mode === 'seek') {
+            beginNativeFramePreview(s);
             s.dx = dx;
             s.target = clamp(s.start + dx*(s.count===2 ? LARGE_MS_PER_PX : SMALL_MS_PER_PX),s.duration);
             const now = performance.now();
@@ -1052,6 +1084,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         }
         fingers.delete(e.pointerId);
         // Never turn a two-finger gesture into a tap/one-finger seek on lift.
+        endNativeFramePreview(touchGesture);
         touchGesture=null;
         if (fingers.size) touchBlocked=true; else cancelTouch();
     }, {capture:true,passive:false});
