@@ -9,6 +9,42 @@
     let suppressClickUntil = 0;
     let overlay = null;
     let touchStream = false;
+    let pendingCenterTap = null;
+
+    // A delayed single center tap permits double tap without pausing first.
+    function playPause(v) {
+        if (v.paused) v.play().catch(()=>{}); else v.pause();
+    }
+    function finishTap(g) {
+        if (!g || g.count !== 1) return;
+        const x=g.x,y=g.y,now=Date.now();
+        const center=x>=innerWidth*.32&&x<=innerWidth*.68&&
+                     y>=innerHeight*.25&&y<=innerHeight*.75;
+        if (center && pendingCenterTap && now-pendingCenterTap.at<=400 &&
+            Math.abs(x-pendingCenterTap.x)<85 && Math.abs(y-pendingCenterTap.y)<85) {
+            clearTimeout(pendingCenterTap.timer);
+            pendingCenterTap=null;
+            g.v.pause();
+            report('double-tap-home');
+            // Jellyfin Web stops & reports playback on SPA viewbeforehide.
+            try {window.chrome?.webview?.postMessage({type:'jfd-player-action',action:'stop-home'});}
+            catch (_) {}
+            return;
+        }
+        if(pendingCenterTap) {
+            clearTimeout(pendingCenterTap.timer);
+            playPause(pendingCenterTap.v);
+            pendingCenterTap=null;
+        }
+        if(!center){playPause(g.v);return;}
+        const entry={v:g.v,x,y,at:now,timer:0};
+        pendingCenterTap=entry;
+        entry.timer=setTimeout(()=>{
+            if(pendingCenterTap!==entry)return;
+            pendingCenterTap=null;
+            playPause(entry.v);
+        },400);
+    }
 
     // Chromium may turn a pointer stream into a scroll gesture and send
     // pointercancel. Prevent that only while the Jellyfin player is open:
@@ -81,7 +117,15 @@
         overlay.textContent = label;
         overlay.style.display = 'block';
     }
-    function hideOverlay() { if (overlay) overlay.style.display='none'; }
+    function hideOverlay() {
+        if (overlay) overlay.style.display='none';
+        window.__jfdTrickplayPreview?.hide();
+    }
+    function showSeekOverlay(target,duration) {
+        if(window.__jfdTrickplayPreview?.show(target,duration)!==true)
+            showOverlay(formatTime(target)+' / '+formatTime(duration));
+        else if(overlay) overlay.style.display='none';
+    }
     function baseline() {
         const v = video();
         if (!v || !fingers.size) {gesture = null; return;}
@@ -127,7 +171,7 @@
             // Preview the intended time without triggering repeated decoder
             // seeks over Wi-Fi: commit exactly once on finger release.
             report('seek-preview');
-            showOverlay(formatTime(g.target)+' / '+formatTime(g.duration));
+            showSeekOverlay(g.target,g.duration);
         }
     }, {capture:true, passive:false});
 
@@ -139,8 +183,7 @@
             if (gesture.mode==='seek') {
                 try { gesture.v.currentTime=gesture.target; report('seek-committed'); } catch (_) { report('seek-error'); }
             } else if (gesture.tap && gesture.count===1) {
-                if (gesture.v.paused) gesture.v.play().catch(()=>{});
-                else gesture.v.pause();
+                finishTap(gesture);
             }
         }
         fingers.delete(e.pointerId);
@@ -215,7 +258,7 @@
         } else if (g.mode==='seek') {
             g.target=clamp(g.start+seekDelta(dx,g.count),g.duration-.5);
             report('seek-preview');
-            showOverlay(formatTime(g.target)+' / '+formatTime(g.duration));
+            showSeekOverlay(g.target,g.duration);
         }
     },{capture:true,passive:false});
 
@@ -227,7 +270,7 @@
             if (g.mode==='seek') {
                 try {g.v.currentTime=g.target;report('seek-committed');} catch (_) {report('seek-error');}
             } else if (g.tap && g.count===1) {
-                if (g.v.paused) g.v.play().catch(()=>{}); else g.v.pause();
+                finishTap(g);
             }
         }
         touchGesture=null;
@@ -247,5 +290,9 @@
         fingers.clear(); gesture=null;
         touchPoints.clear(); touchGesture=null; touchStream=false;
         hideOverlay();
+        if(pendingCenterTap) {
+            clearTimeout(pendingCenterTap.timer);
+            pendingCenterTap=null;
+        }
     });
 })();
