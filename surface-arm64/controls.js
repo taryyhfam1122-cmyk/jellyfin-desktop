@@ -181,8 +181,10 @@
         g.holdTimer=setInterval(()=>{
             if(!isActive() || g.v!==video()){stopHold(g);return;}
             const now=performance.now();
+            // Leftmost 15% is reserved for vertical speed control.
+            // Keep the existing hold-to-rewind in the adjacent left zone.
             if(!g.mode && now-g.startedAt>=500 &&
-                (g.x<innerWidth*.32 || g.x>innerWidth*.68)) {
+                ((g.x>innerWidth*.15 && g.x<innerWidth*.32) || g.x>innerWidth*.68)) {
                 g.mode='seek'; g.tap=false; g.holdOnly=true;
                 g.rate=g.x<innerWidth*.32 ? -15 : 15;
                 g.lastTickAt=now;
