@@ -592,6 +592,106 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         }
     }
 });
+// BEGIN CHATGPT_JFD_FULLSCREEN_HOME_CLOSE_V01
+// Only expose a native app-exit button on fullscreen library/home screens.
+// The player retains its existing fullscreen UI and mouse gestures.
+(function () {
+    'use strict';
+    if (window.__jfdFullscreenHomeCloseV01) return;
+    window.__jfdFullscreenHomeCloseV01 = true;
+
+    const BUTTON_ID = 'jfd-fullscreen-home-close';
+    let videoActive = false;
+    let refreshQueued = false;
+
+    function ensureButton() {
+        let button = document.getElementById(BUTTON_ID);
+        if (button) return button;
+        button = document.createElement('button');
+        button.id = BUTTON_ID;
+        button.type = 'button';
+        button.textContent = '\u00d7';
+        button.title = 'Jellyfin Desktopを終了';
+        button.setAttribute('aria-label', 'Jellyfin Desktopを終了');
+        button.style.cssText = 'position:fixed;top:12px;right:12px;width:44px;height:44px;'
+            + 'z-index:2147483646;display:none;align-items:center;justify-content:center;'
+            + 'border:1px solid #666;border-radius:8px;background:rgba(24,24,28,.87);'
+            + 'color:#fff;font:normal 30px/1 Arial,sans-serif;cursor:pointer;'
+            + 'user-select:none;touch-action:manipulation;';
+        button.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            // Same exit method as Jellyfin's existing native exit menu.
+            if (window.api && window.api.system && typeof window.api.system.exit === 'function')
+                window.api.system.exit();
+        });
+        document.body.appendChild(button);
+        return button;
+    }
+
+    function refresh() {
+        if (!document.body) return;
+        const fullscreen = !!window.jmpInfo?.settings?.main?.fullscreen;
+        // Do not show on top of video controls or while a video is loading.
+        const show = fullscreen && !videoActive &&
+            !document.querySelector('.videoPlayerContainer');
+        const button = show ? ensureButton() : document.getElementById(BUTTON_ID);
+        if (button) button.style.display = show ? 'flex' : 'none';
+    }
+
+    function scheduleRefresh() {
+        if (refreshQueued) return;
+        refreshQueued = true;
+        setTimeout(function () {
+            refreshQueued = false;
+            refresh();
+        }, 0);
+    }
+
+    window.jfdFullscreenHomeClose = {
+        setVideoActive(active) {
+            videoActive = !!active;
+            scheduleRefresh();
+        },
+        refresh: scheduleRefresh
+    };
+
+    window.jmpInfo.settingsUpdate.push(function (section) {
+        if (section === 'main') scheduleRefresh();
+    });
+    window.addEventListener('popstate', scheduleRefresh);
+    window.addEventListener('hashchange', scheduleRefresh);
+
+    function isVideoElementChange(records) {
+        for (const record of records) {
+            for (const nodes of [record.addedNodes, record.removedNodes]) {
+                for (const node of nodes) {
+                    if (node.nodeType !== 1) continue;
+                    if (node.matches?.('.videoPlayerContainer') ||
+                        node.querySelector?.('.videoPlayerContainer')) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function startWatching() {
+        scheduleRefresh();
+        // Jellyfin navigates within a single document; the player dialog may
+        // disappear after the playback-stop callback, so observe its removal.
+        const observer = new MutationObserver(function (records) {
+            if (isVideoElementChange(records)) scheduleRefresh();
+        });
+        observer.observe(document.body, {childList: true, subtree: true});
+    }
+
+    if (document.readyState === 'loading')
+        document.addEventListener('DOMContentLoaded', startWatching, {once: true});
+    else if (document.body)
+        startWatching();
+})();
+// END CHATGPT_JFD_FULLSCREEN_HOME_CLOSE_V01
+
 // BEGIN CHATGPT_JFD_MOUSECONTROLS_V05
 // Mouse controls for Jellyfin Desktop's embedded Qt/WebEngine/libmpv player.
 // Seek uses Qt WebChannel native player rather than playbackManager._currentPlayer.
@@ -633,6 +733,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         preloadFrame(player) { preloadFrame(player); },
         setPlayer(player) {
             activePlayer = player;
+            window.jfdFullscreenHomeClose?.setVideoActive(true);
             resetFramePreview();
             cancelTouch();
             touchButton((window.navigator?.maxTouchPoints || 0) > 0);
@@ -645,6 +746,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         ended(player) {
             if (activePlayer !== player) return;
             activePlayer = null;
+            window.jfdFullscreenHomeClose?.setVideoActive(false);
             resetFramePreview();
             cancelTouch();
             touchButton(false);
@@ -668,6 +770,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             native.paused.connect(() => { nativePaused = true; });
             native.playing.connect(() => { nativePaused = false; });
             native.stopped.connect(() => {
+                window.jfdFullscreenHomeClose?.setVideoActive(false);
                 nativeDuration = 0;
                 resetFramePreview();
                 cancelTouch();
