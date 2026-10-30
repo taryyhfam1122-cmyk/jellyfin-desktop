@@ -68,3 +68,14 @@ test('center tap series maps double to fullscreen and triple to closing the vide
     assert.match(source,/Math\.max\(Math\.abs\(dx\),Math\.abs\(dy\)\) < 10/);
     assert.match(source,/Math\.max\(Math\.abs\(dx\),Math\.abs\(dy\)\)<10/);
 });
+
+test('left edge speed handler uses 0.5x steps without changing horizontal seek math',()=>{
+    assert.match(source,/const SPEED_STEP_PX=50/);
+    assert.match(source,/const MIN_PLAYBACK_RATE=0\.5/);
+    assert.match(source,/const MAX_PLAYBACK_RATE=4\.0/);
+    assert.match(source,/function updatePlaybackSpeed\(g,dy\)/);
+    assert.match(source,/g\.v\.playbackRate=rate/);
+    assert.match(source,/g\.leftEdge && Math\.abs\(dy\)>Math\.abs\(dx\) \? 'speed'/);
+    assert.match(source,/showOverlay\('再生速度 '/);
+    assert.doesNotMatch(source,/localStorage|accessToken|ApiKey|Authorization/);
+});
