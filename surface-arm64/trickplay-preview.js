@@ -111,5 +111,10 @@
         if(root) root.style.display='none';
     }
 
-    window.__jfdTrickplayPreview={show,hide};
+    function prefetch(seconds,duration) {
+        const sprite=getSprite(seconds,duration);
+        if(sprite)loadSheet(sprite.url).catch(()=>{});
+    }
+
+    window.__jfdTrickplayPreview={show,hide,prefetch};
 })();
