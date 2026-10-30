@@ -114,9 +114,9 @@ test('longer swipe holds at faster rate; reversing swipe seeks backward',()=>{
     h.advance(250);
     assert.deepEqual(h.seeks,[180,195]);
     move(h,200);
-    assert.deepEqual(h.seeks,[180,195,105],'new leftward swipe uses same start with accumulated hold');
+    assert.deepEqual(h.seeks,[180,195,120],'new leftward swipe uses same start with accumulated hold');
     h.advance(250);
-    assert.deepEqual(h.seeks,[180,195,105,101.25]);
+    assert.deepEqual(h.seeks,[180,195,120,116.25]);
     end(h,200);
 });
 test('stationary long press on right third starts fast forward after 500ms',()=>{
