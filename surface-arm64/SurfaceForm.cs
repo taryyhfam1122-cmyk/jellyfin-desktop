@@ -87,9 +87,37 @@ public sealed class SurfaceForm : Form
                 }
             };
             core.ProcessFailed += (_, e) => Log("WebView2 process failed: " + e.ProcessFailedKind);
-            _browser.NavigationCompleted += (_, e) =>
+            core.WebMessageReceived += (_, e) =>
             {
-                if (!e.IsSuccess) Log("Navigation error: " + e.WebErrorStatus);
+                // Accept only fixed diagnostic events from the selected Jellyfin origin.
+                // Never log the message body, media URL, access token or username.
+                if (_serverUri is null || !Uri.TryCreate(e.Source, UriKind.Absolute, out var from) ||
+                    from.Scheme != _serverUri.Scheme || from.Authority != _serverUri.Authority)
+                    return;
+                try
+                {
+                    using var doc = JsonDocument.Parse(e.WebMessageAsJson);
+                    var root = doc.RootElement;
+                    if (!root.TryGetProperty("type", out var type) ||
+                        type.GetString() != "jfd-touch-status" ||
+                        !root.TryGetProperty("event", out var eventName))
+                        return;
+                    var name = eventName.GetString();
+                    if (name is "script-loaded" or "gesture-start" or "touch-start" or
+                        "seek-preview" or "seek-committed" or "seek-error" or "pointer-cancel")
+                        Log("Touch status: " + name);
+                }
+                catch (JsonException) { }
+            };
+            _browser.NavigationCompleted += async (_, e) =>
+            {
+                if (!e.IsSuccess) { Log("Navigation error: " + e.WebErrorStatus); return; }
+                try
+                {
+                    var loaded = await core.ExecuteScriptAsync("Boolean(window.__jfdSurfaceTouchV1)");
+                    Log("Touch script injected: " + (loaded == "true" ? "yes" : "no"));
+                }
+                catch (Exception error) { Log("Touch diagnostics unavailable: " + error.GetType().Name); }
             };
 
             var setting = Path.Combine(_appData, "server.txt");
