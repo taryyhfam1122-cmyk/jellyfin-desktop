@@ -1,0 +1,51 @@
+name: build-surface-arm64-native
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - surface-arm64-native-v01
+    paths:
+      - 'surface-arm64/**'
+      - '.github/workflows/build-surface-arm64-native.yml'
+
+jobs:
+  build-arm64:
+    runs-on: windows-11-arm
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify touch source
+        run: |
+          node --check surface-arm64/controls.js
+          node --test surface-arm64/tests/gestures.test.cjs
+      - name: Restore and publish native win-arm64
+        run: |
+          dotnet --info
+          dotnet publish surface-arm64/JellyfinSurface.csproj -c Release -r win-arm64 --self-contained true -o publish
+      - name: Verify ARM64 executable, loaders and native runtime
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path (Resolve-Path publish).Path 'JellyfinSurfaceARM64.exe'
+          if (!(Test-Path $exe)) { throw 'Native executable missing' }
+          if (!(Test-Path publish/controls.js)) { throw 'Touch controls missing' }
+          if (!(Test-Path publish/runtimes/win-arm64/native/WebView2Loader.dll)) { throw 'ARM64 WebView2 loader missing' }
+          $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "ARM64 native runtime self-test failed: $($process.ExitCode)" }
+          'PASS: ARM64 executable and native runtime; WebView2 initialization requires Surface test.' | Set-Content publish/validation.txt
+      - name: Create Portable ZIP
+        run: |
+          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-native-v01.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jellyfin-surface-arm64-native-v01
+          path: JellyfinSurface-ARM64-native-v01.zip
+          if-no-files-found: error
