@@ -10,6 +10,7 @@ public sealed class SurfaceForm : Form
 {
     private readonly WebView2 _browser = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Black };
     private readonly FlowLayoutPanel _toolbar = new() { Dock = DockStyle.Top, Height = 54, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(25, 29, 36), Padding = new Padding(4) };
+    private readonly FlowLayoutPanel _fullscreenBar = new() { Dock = DockStyle.Top, Height = 46, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(23, 28, 35), Padding = new Padding(3), Visible = false };
     private readonly TextBox _server = new() { Width = 400, Font = new Font("Segoe UI", 11), PlaceholderText = "http://NAS-IP:30013" };
     private readonly string _appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JellyfinSurfaceARM64");
     private bool _fullscreen;
@@ -30,10 +31,16 @@ public sealed class SurfaceForm : Form
         var connect = Button("接続", 66, () => _ = ConnectAsync());
         var refresh = Button("更新", 65, () => _browser.Reload());
         var full = Button("全画面", 82, ToggleFullscreen);
+        var exit = Button("終了 ✕", 95, Close);
+        var leaveFullscreen = Button("通常表示", 102, ToggleFullscreen);
+        var fullHome = Button("ホーム", 90, () => _ = StopAndHomeAsync());
+        var fullExit = Button("アプリを終了 ✕", 148, Close);
 
-        _toolbar.Controls.AddRange([back, home, _server, connect, refresh, full]);
+        _toolbar.Controls.AddRange([back, home, _server, connect, refresh, full, exit]);
+        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullExit]);
         Controls.Add(_browser);
         Controls.Add(_toolbar);
+        Controls.Add(_fullscreenBar);
         _server.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; _ = ConnectAsync(); } };
         KeyDown += (_, e) => { if (e.KeyCode == Keys.F11) { ToggleFullscreen(); e.Handled = true; } else if (e.KeyCode == Keys.Escape && _fullscreen) { ToggleFullscreen(); e.Handled = true; } };
         Shown += async (_, _) => await InitializeAsync();
@@ -59,8 +66,32 @@ public sealed class SurfaceForm : Form
     {
         _fullscreen = !_fullscreen;
         _toolbar.Visible = !_fullscreen;
+        // Keep touch-sized native exit/home controls visible even in fullscreen.
+        _fullscreenBar.Visible = _fullscreen;
         FormBorderStyle = _fullscreen ? FormBorderStyle.None : FormBorderStyle.Sizable;
         WindowState = FormWindowState.Maximized;
+    }
+
+    private async Task StopAndHomeAsync()
+    {
+        var core = _browser.CoreWebView2;
+        if (core is null || _serverUri is null) return;
+        try
+        {
+            // Jellyfin Web's SPA navigation triggers its viewbeforehide handler,
+            // which calls playbackManager.stop and reports the playback session.
+            await core.ExecuteScriptAsync("window.location.hash = '#/home';");
+            await Task.Delay(250);
+            var stillPlaying = await core.ExecuteScriptAsync(
+                "Boolean(document.querySelector('.videoPlayerContainer video'))");
+            if (stillPlaying == "true")
+                core.Navigate(new Uri(_serverUri, "/web/#/home").ToString());
+        }
+        catch (Exception ex)
+        {
+            Log("Stop/home navigation failed: " + ex.GetType().Name);
+            core.Navigate(new Uri(_serverUri, "/web/#/home").ToString());
+        }
     }
 
     private async Task InitializeAsync()
@@ -98,13 +129,21 @@ public sealed class SurfaceForm : Form
                 {
                     using var doc = JsonDocument.Parse(e.WebMessageAsJson);
                     var root = doc.RootElement;
-                    if (!root.TryGetProperty("type", out var type) ||
-                        type.GetString() != "jfd-touch-status" ||
-                        !root.TryGetProperty("event", out var eventName))
+                    if (!root.TryGetProperty("type", out var type)) return;
+                    if (type.GetString() == "jfd-player-action")
+                    {
+                        if (root.TryGetProperty("action", out var action) &&
+                            action.GetString() == "stop-home")
+                            _ = StopAndHomeAsync();
                         return;
+                    }
+                    if (type.GetString() != "jfd-touch-status" ||
+                        !root.TryGetProperty("event", out var eventName)) return;
                     var name = eventName.GetString();
                     if (name is "script-loaded" or "gesture-start" or "touch-start" or
-                        "seek-preview" or "seek-committed" or "seek-error" or "pointer-cancel")
+                        "seek-preview" or "seek-committed" or "seek-error" or
+                        "pointer-cancel" or "trickplay-displayed" or "trickplay-unavailable" or
+                        "trickplay-error" or "double-tap-home")
                         Log("Touch status: " + name);
                 }
                 catch (JsonException) { }
@@ -148,7 +187,8 @@ public sealed class SurfaceForm : Form
             _server.Text = server.GetLeftPart(UriPartial.Authority);
             File.WriteAllText(Path.Combine(_appData, "server.txt"), _server.Text);
             if (_scriptId is not null) _browser.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(_scriptId);
-            var source = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "controls.js"));
+            var preview = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "trickplay-preview.js"));
+            var source = preview + "\n" + await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "controls.js"));
             source = source.Replace("\"__JFD_SERVER_ORIGIN__\"", JsonSerializer.Serialize(_server.Text), StringComparison.Ordinal);
             _scriptId = await _browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(source);
             _browser.CoreWebView2.Navigate(new Uri(server, "/web/").ToString());
