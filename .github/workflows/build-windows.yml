@@ -16,6 +16,7 @@ on:
       - touch-controls-v01
       - seek-fullscreen-preview-v01
       - seek-fullscreen-preview-v02
+      - fullscreen-home-close-v01
 
 jobs:
   build:
@@ -54,6 +55,7 @@ jobs:
         node --test tests/test_mouse_controls.cjs
         node --test tests/test_fullscreen_trickplay.cjs
         node --test tests/test_preview_v02.cjs
+        node --test tests/test_fullscreen_home_close.cjs
     - name: Install Qt 6
       uses: jurplel/install-qt-action@v4
       with:
@@ -130,7 +132,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-preview-v02-validation
+        name: ${{ matrix.artifact }}-home-close-v01-validation
         path: build/portable-validation/
         if-no-files-found: ignore
     - name: Archive installer
@@ -141,6 +143,6 @@ jobs:
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-preview-v02-portable
+        name: ${{ matrix.artifact }}-home-close-v01-portable
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.zip
         if-no-files-found: error
