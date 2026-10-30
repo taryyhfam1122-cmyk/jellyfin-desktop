@@ -9,7 +9,9 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'controls.js'), 'utf8'
     .replace('"__JFD_SERVER_ORIGIN__"', '"http://jellyfin.test:30013"');
 
 function harness() {
-    const listeners = new Map(), reports = [], seeks = [];
+    const listeners = new Map(), reports = [], seeks = [], messages = [];
+    const timers = new Map();
+    let timerId = 0;
     let current = 120, numberOfVideos = 1;
     const video = {
         isConnected: true, duration: 600, paused: false, volume: 0.5, muted: false,
@@ -33,13 +35,15 @@ function harness() {
     };
     const window = {
         innerWidth:1200, innerHeight:800,
-        chrome:{webview:{postMessage:v=>reports.push(v.event)}},
+        chrome:{webview:{postMessage:v=>{reports.push(v.event);messages.push(v);}}},
         addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,[]);listeners.get(name).push(fn);}
     };
     const ctx = {
         window, document, location:{origin:'http://jellyfin.test:30013'},
         getComputedStyle:()=>({visibility:'visible'}), innerWidth:1200, innerHeight:800,
-        Map, Set, Number, Math, String, performance:{now:()=>1000}, console
+        Map, Set, Number, Math, String, performance:{now:()=>1000}, console,
+        setTimeout:(fn)=>{const id=++timerId;timers.set(id,fn);return id;},
+        clearTimeout:id=>timers.delete(id)
     };
     vm.runInNewContext(source, ctx);
     const target = {closest:()=>null,setPointerCapture(){}};
@@ -56,7 +60,7 @@ function harness() {
         return e;
     }
     const point = (id,x,y=350)=>({identifier:id,clientX:x,clientY:y});
-    return {dispatch,point,reports,seeks,video,disableVideo:()=>{numberOfVideos=0;}};
+    return {dispatch,point,reports,messages,seeks,video,disableVideo:()=>{numberOfVideos=0;}};
 }
 
 test('touchstart/move/end performs one finger seek without re-seeking during drag',()=>{
@@ -102,4 +106,19 @@ test('gesture recognition never swallows library scrolling or seekbar touch',()=
     const ui={closest:selector=>selector.includes('sliderContainer')?{}:null};
     const e2=h2.dispatch('touchstart',{target:ui,changedTouches:[h2.point(1,300)],touches:[h2.point(1,300)]});
     assert.equal(e2.defaultPrevented,false);
+});
+
+test('central double tap sends stop-home action without first toggling playback',()=>{
+    const h=harness();
+    const tap=()=>{
+        h.dispatch('touchstart',{changedTouches:[h.point(1,500)],touches:[h.point(1,500)]});
+        h.dispatch('touchend',{changedTouches:[h.point(1,500)],touches:[]});
+    };
+    tap();
+    assert.equal(h.video.paused,false);
+    tap();
+    assert.equal(h.video.paused,true);
+    assert.ok(h.messages.some(x=>x.type==='jfd-player-action'&&x.action==='stop-home'));
+    assert.ok(h.reports.includes('double-tap-home'));
+    assert.equal(h.seeks.length,0);
 });
