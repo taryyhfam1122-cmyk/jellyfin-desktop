@@ -152,6 +152,9 @@
                 if (!this._started) {
                     this._started = true;
 
+                    // Pre-decode the current trickplay sheet before a seek gesture.
+                    window.jfdMouseControls?.preloadFrame(this);
+
                     this.loading.hide();
 
                     const volume = this.getSavedVolume() * 100;
