@@ -154,14 +154,16 @@ test('stationary long press on left third rewinds until released',()=>{
     h.advance(2000);
     assert.equal(h.seeks.length,2);
 });
-test('center hold does not trigger seek or disrupt double tap to home',()=>{
+test('center hold does not seek; two subsequent taps can toggle fullscreen',()=>{
     const h=harness();
     start(h,500);
     h.advance(1000);
     assert.deepEqual(h.seeks,[]);
     end(h,500);
     start(h,500);end(h,500);
-    assert.ok(h.messages.some(m=>m.type==='jfd-player-action'&&m.action==='stop-home'));
+    h.advance(400);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,1);
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,0);
     assert.equal(h.activeTimers(),0);
 });
 test('side short tap retains play pause behavior',()=>{
