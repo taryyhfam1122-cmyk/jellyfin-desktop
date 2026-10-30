@@ -137,7 +137,7 @@ struct JellyfinBrowser: UIViewRepresentable {
 
         if let path = Bundle.main.url(forResource: "controls", withExtension: "js"),
            let controls = try? String(contentsOf: path, encoding: .utf8),
-           let quotedOrigin = try? String(data: JSONEncoder().encode(origin.absoluteString), encoding: .utf8) {
+           let quotedOrigin = try? String(data: JSONEncoder().encode(origin.absoluteString.hasSuffix("/") ? String(origin.absoluteString.dropLast()) : origin.absoluteString), encoding: .utf8) {
             let injected = controls.replacingOccurrences(of: "\"__JFD_SERVER_ORIGIN__\"", with: quotedOrigin)
             content.addUserScript(WKUserScript(source: injected, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
@@ -149,7 +149,7 @@ struct JellyfinBrowser: UIViewRepresentable {
         browser.scrollView.backgroundColor = .black
         browser.allowsBackForwardNavigationGestures = false
         context.coordinator.webView = browser
-        let url = origin.appendingPathComponent("web/")
+        let url = origin.appendingPathComponent("web", isDirectory: true)
         browser.load(URLRequest(url: url))
         return browser
     }
