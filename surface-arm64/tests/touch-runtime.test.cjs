@@ -42,7 +42,7 @@ function harness(){
             return id;
         },
         clearInterval:id=>intervals.delete(id),
-        setTimeout:(fn,ms)=>{const id=++nextId;timeouts.set(id,{fn,ms});return id;},
+        setTimeout:(fn,ms)=>{const id=++nextId;timeouts.set(id,{fn,ms,next:clock+ms});return id;},
         clearTimeout:id=>timeouts.delete(id)
     };
     vm.runInNewContext(source,ctx);
@@ -63,16 +63,26 @@ function harness(){
         let n=0;
         while(true){
             if(n++>10000)throw Error('timer loop');
-            let bestId=null,best=Infinity;
+            let bestId=null,best=Infinity,kind=null;
             for(const [id,t] of intervals){
-                if(t.next<=end && t.next<best){best=t.next;bestId=id;}
+                if(t.next<=end && t.next<best){best=t.next;bestId=id;kind='interval';}
+            }
+            for(const [id,t] of timeouts){
+                if(t.next<=end && t.next<best){best=t.next;bestId=id;kind='timeout';}
             }
             if(bestId===null)break;
             clock=best;
-            const t=intervals.get(bestId);
-            if(!t)continue;
-            t.next+=t.ms;
-            t.fn();
+            if(kind==='timeout'){
+                const t=timeouts.get(bestId);
+                if(!t)continue;
+                timeouts.delete(bestId);
+                t.fn();
+            } else {
+                const t=intervals.get(bestId);
+                if(!t)continue;
+                t.next+=t.ms;
+                t.fn();
+            }
         }
         clock=end;
     }
@@ -94,11 +104,11 @@ test('single finger swipe keeps seeking without any further movement',()=>{
     const h=harness();
     start(h,300);
     move(h,400);
-    assert.deepEqual(h.seeks,[135]);
+    assert.deepEqual(h.seeks,[180]);
     h.advance(250);
-    assert.deepEqual(h.seeks,[135,138.75]);
+    assert.deepEqual(h.seeks,[180,195]);
     h.advance(500);
-    assert.deepEqual(h.seeks,[135,138.75,142.5,146.25]);
+    assert.deepEqual(h.seeks,[180,195,210,225]);
     end(h,400);
     const n=h.seeks.length;
     h.advance(2000);
@@ -110,13 +120,13 @@ test('longer swipe holds at faster rate; reversing swipe seeks backward',()=>{
     const h=harness();
     start(h,300);
     move(h,500);
-    assert.deepEqual(h.seeks,[180]);
+    assert.deepEqual(h.seeks,[322.5]);
     h.advance(250);
-    assert.deepEqual(h.seeks,[180,195]);
+    assert.deepEqual(h.seeks,[322.5,373.125]);
     move(h,200);
-    assert.deepEqual(h.seeks,[180,195,120],'new leftward swipe uses same start with accumulated hold');
+    assert.deepEqual(h.seeks,[322.5,373.125,110.625],'new leftward swipe uses same start with accumulated hold');
     h.advance(250);
-    assert.deepEqual(h.seeks,[180,195,120,116.25]);
+    assert.deepEqual(h.seeks,[322.5,373.125,110.625,95.625]);
     end(h,200);
 });
 test('stationary long press on right third starts fast forward after 500ms',()=>{
@@ -183,9 +193,9 @@ test('pointer-only stream repeats while held and stops on lift',()=>{
     const h=harness();
     h.dispatch('pointerdown',{pointerId:1,clientX:300});
     h.dispatch('pointermove',{pointerId:1,clientX:400});
-    assert.deepEqual(h.seeks,[135]);
+    assert.deepEqual(h.seeks,[180]);
     h.advance(250);
-    assert.deepEqual(h.seeks,[135,138.75]);
+    assert.deepEqual(h.seeks,[180,195]);
     h.dispatch('pointerup',{pointerId:1,clientX:400});
     assert.equal(h.activeTimers(),0);
 });
@@ -196,7 +206,7 @@ test('touch stream replaces pointer stream without two live seek intervals',()=>
     assert.equal(h.activeTimers(),1);
     move(h,400);
     h.advance(250);
-    assert.deepEqual(h.seeks,[135,138.75]);
+    assert.deepEqual(h.seeks,[180,195]);
     end(h,400);
     assert.equal(h.activeTimers(),0);
 });
@@ -234,4 +244,41 @@ test('cancelled gesture or window blur stops held seeking',()=>{
     h.advance(1000);
     assert.equal(h.seeks.length,m);
     assert.equal(h.activeTimers(),0);
+});
+
+test('center single tap toggles native fullscreen after double tap grace period',()=>{
+    const h=harness();
+    start(h,500);end(h,500);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
+    h.advance(399);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
+    h.advance(1);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,1);
+    assert.equal(h.video.paused,false,'center tap does not pause playback');
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,0);
+    assert.ok(h.reports.includes('center-fullscreen'));
+    assert.deepEqual(h.seeks,[]);
+});
+test('center double tap returns home without toggling fullscreen',()=>{
+    const h=harness();
+    start(h,500);end(h,500);
+    h.advance(100);
+    start(h,500);end(h,500);
+    h.advance(500);
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,1);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
+    assert.equal(h.video.paused,true);
+});
+test('one-finger 10px starts seeking without needing 15px travel',()=>{
+    const h=harness();
+    start(h,300);move(h,310);
+    assert.deepEqual(h.seeks,[123]);
+    end(h,310);
+});
+test('native fullscreen handler and exit toolbar remain in place',()=>{
+    const native=fs.readFileSync(path.join(__dirname,'..','SurfaceForm.cs'),'utf8');
+    assert.match(native,/command == "toggle-fullscreen"/);
+    assert.match(native,/ToggleFullscreen\(\)/);
+    assert.match(native,/command == "stop-home"/);
+    assert.match(native,/アプリを終了/);
 });
