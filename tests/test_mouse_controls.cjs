@@ -17,7 +17,7 @@ async function setup(pointer = true) {
     const signal = () => ({connect(fn) { this.fn = fn; }, disconnect() {}});
     const native = {};
     for (const name of ['positionUpdate','updateDuration','paused','playing','stopped','finished','error','bufferedRangesUpdated']) native[name] = signal();
-    for (const name of ['seekTo','setVolume','stop','setVideoRectangle','pause','play']) native[name] = (...args) => calls.push([name, ...args]);
+    for (const name of ['seekTo','setVolume','stop','setVideoRectangle','pause','play','setPlaybackRate','notifyRateChange']) native[name] = (...args) => calls.push([name, ...args]);
     const document = {
         addEventListener(name, fn) { (listeners[name] ||= []).push(fn); },
         querySelector: () => container ? {} : null,
@@ -25,7 +25,7 @@ async function setup(pointer = true) {
         createElement: (tag) => { const el={tag,style: {}, setAttribute() {}, addEventListener(name, fn) { this[name] = fn; }}; nodes.push(el); return el; }
     };
     const win = {
-        api: {player: native}, apiPromise: Promise.resolve({player: native}),
+        api: {player: native, input: {executeActions:(actions)=>calls.push(['actions',...actions])}}, apiPromise: Promise.resolve({player: native}),
         innerWidth: 1000, innerHeight: 1000, location: {href: 'http://server/web/#/details?id=1', reload() { reloads++; }},
         addEventListener(name, fn) { (listeners[name] ||= []).push(fn); },
         fetch: async (url, ok = true) => ({url, ok})
@@ -47,7 +47,7 @@ async function setup(pointer = true) {
     await Promise.resolve();
     vm.runInContext(playerCode, context);
     const player = new win._mpvVideoPlayer({events, appSettings: {get() { return 1; }, set() {}}, dashboard: {default: {setBackdropTransparency() {}}}});
-    player._started = true; player._currentSrc = 'movie'; player._currentTime = 120000; player._duration = 600000;
+    player._started = true; player._currentSrc = 'movie'; player._currentTime = 120000; player._duration = 600000;player._playRate=1;
     player.destroy = () => { container = false; };
     const manager = {stop(p) { calls.push(['managerStop', p]); return p.stop(true); }, isPlaying() { return false; }};
     win.jfdMouseControls.setManager(manager);
@@ -231,22 +231,22 @@ test('a new drag cancels the preceding single-click pause timer', async () => {
 function finger(s, event, id, x, y=500) {
     return s.emit('pointer'+event, {pointerType:'touch',pointerId:id,clientX:x,clientY:y});
 }
-test('touch single-finger actual seek is +/-15 seconds per 100 CSS pixels', async () => {
+test('touch single-finger uses Surface curve: +/-60 seconds per 100 CSS pixels', async () => {
     const s = await setup();
     finger(s,'down',1,200); finger(s,'move',1,300); finger(s,'up',1,300);
-    assert.equal(s.player.currentTime(),135000);
-    assert.equal(s.calls.find(c=>c[0]==='seekTo')[1],135000);
+    assert.equal(s.player.currentTime(),180000);
+    assert.equal(s.calls.find(c=>c[0]==='seekTo')[1],180000);
     finger(s,'down',1,300); finger(s,'up',1,200);
     assert.equal(s.player.currentTime(),120000);
     assert.equal(s.calls.filter(c=>c[0]==='pause').length,0);
     assert.equal(s.emit('click').prevented,true);
 });
-test('touch two-finger centroid seek uses 90 seconds, lifting fingers never taps', async () => {
+test('touch two-finger gestures are disabled and never seek or tap', async () => {
     const s=await setup();
     finger(s,'down',1,200); finger(s,'down',2,400);
     finger(s,'move',1,300); finger(s,'move',2,500);
     finger(s,'up',1,300); finger(s,'up',2,500);
-    assert.equal(s.player.currentTime(),210000);
+    assert.equal(s.player.currentTime(),120000);
     assert.equal(s.calls.filter(c=>c[0]==='pause'||c[0]==='play').length,0);
 });
 test('touch tap toggles once and right-edge volume increases upwards', async () => {
@@ -267,7 +267,7 @@ test('three fingers and cancellation have no gesture action; playback can reopen
     finger(s,'down',1,200); s.emit('pointercancel',{pointerType:'touch',pointerId:1});
     finger(s,'up',1,300); assert.equal(s.calls.length,0);
     s.win.jfdMouseControls.ended(s.player); s.win.jfdMouseControls.setPlayer(s.player);
-    finger(s,'down',1,200); finger(s,'up',1,300); assert.equal(s.player.currentTime(),135000);
+    finger(s,'down',1,200); finger(s,'up',1,300); assert.equal(s.player.currentTime(),180000);
 });
 test('touch UI and library input pass through without preventing natural scrolling', async () => {
     const s=await setup();
@@ -283,7 +283,58 @@ test('touch stop button uses the same manager and final-position cache as middle
     finger(s,'down',1,200); finger(s,'up',1,300);
     const button=s.nodes.find(n=>n.tag==='button'); assert.ok(button);
     button.click();
-    assert.equal(position,135000);
+    assert.equal(position,180000);
     assert.equal(s.calls.find(c=>c[0]==='managerStop')[1],s.player);
     s.runTimers(); assert.equal(s.reloads(),0);
+});
+
+
+test('surface parity: touch drag held stationary continues advancing and stops on release',async()=>{
+    const s=await setup();
+    finger(s,'down',1,300);finger(s,'move',1,350);
+    finger(s,'up',1,350);
+    assert.equal(s.player.currentTime(),135000);
+    finger(s,'down',1,300);finger(s,'move',1,350);
+    s.advance(250);
+    assert.ok(s.player.currentTime()>=153000);
+    s.advance(500);
+    const held=s.player.currentTime();
+    assert.ok(held>153000);
+    finger(s,'up',1,350);
+    s.advance(1000);
+    assert.equal(s.player.currentTime(),held);
+});
+test('surface parity: left vertical changes MPV playback rate in 0.05x steps',async()=>{
+    const s=await setup();
+    finger(s,'down',1,100,500);
+    finger(s,'move',1,100,450);
+    assert.equal(s.player.getPlaybackRate(),1.05);
+    assert.ok(s.calls.some(c=>c[0]==='setPlaybackRate'&&c[1]===1050));
+    finger(s,'move',1,100,400);
+    assert.equal(s.player.getPlaybackRate(),1.1);
+    finger(s,'up',1,100,400);
+    finger(s,'down',1,100,500);
+    finger(s,'move',1,100,550);
+    assert.equal(s.player.getPlaybackRate(),1.05);
+    finger(s,'up',1,100,550);
+    assert.equal(s.player.getVolume(),s.player._volume);
+});
+test('surface parity: double center tap toggles fullscreen; triple stops',async()=>{
+    const double=await setup();
+    for(let i=0;i<2;i++){finger(double,'down',1,500);finger(double,'up',1,500);}
+    double.runTimers();
+    assert.equal(double.calls.filter(c=>c[0]==='actions'&&c[1]==='host:fullscreen').length,1);
+    assert.equal(double.calls.filter(c=>c[0]==='managerStop').length,0);
+    const triple=await setup();
+    for(let i=0;i<3;i++){finger(triple,'down',1,500);finger(triple,'up',1,500);}
+    assert.equal(triple.calls.filter(c=>c[0]==='managerStop').length,1);
+    assert.equal(triple.calls.filter(c=>c[0]==='actions').length,0);
+});
+test('surface parity: right side changes volume without changing speed',async()=>{
+    const s=await setup();
+    s.player._volume=50;
+    finger(s,'down',1,900,500);finger(s,'move',1,900,300);
+    assert.ok(s.player.getVolume()>50);
+    assert.equal(s.player.getPlaybackRate(),1);
+    finger(s,'up',1,900,300);
 });
