@@ -148,7 +148,8 @@ public sealed class SurfaceForm : Form
                     if (name is "script-loaded" or "gesture-start" or "touch-start" or
                         "seek-preview" or "seek-committed" or "seek-error" or
                         "pointer-cancel" or "trickplay-displayed" or "trickplay-unavailable" or
-                        "trickplay-error" or "double-tap-home" or "triple-tap-home" or "center-fullscreen")
+                        "trickplay-error" or "double-tap-home" or "triple-tap-home" or "center-fullscreen" or
+                        "speed-changed" or "speed-error")
                         Log("Touch status: " + name);
                 }
                 catch (JsonException) { }
