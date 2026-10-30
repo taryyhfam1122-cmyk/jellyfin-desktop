@@ -34,3 +34,33 @@ Build verification covers JavaScript behavior, Qt/MPV/VC runtime files and a
 12-second extracted-ZIP startup on Windows CI. Actual playback, drag delivery,
 audio and server watch history require your Windows/Jellyfin environment.
 Logs include [JFD Mouse v0.5] markers; check Portable data/profiles for logs.
+
+
+Surface v0.9 gesture parity on Windows x64 (experimental branch desktop-surface-gestures-v01)
+======================================================================================
+The original desktop mouse controls are preserved:
+  Left mouse horizontal drag +/-15 sec per 100 CSS px
+  Right mouse horizontal drag +/-90 sec per 100 CSS px
+  Hold after drag = continuous seek
+  Mouse wheel = volume
+  Middle mouse = stop and preserve watch state
+
+New edge mouse controls:
+  LEFT 15% of video: left-button vertical UP/DOWN drag = speed +/-0.05x
+    for every 50 CSS px, range 0.50x through 4.00x
+  RIGHT 15% of video: left-button vertical UP/DOWN drag = volume
+  Drag horizontally in either edge to seek as before.
+
+New touchscreen controls for x64 touchscreen Windows:
+  One-finger horizontal swipe = Surface v0.9 distance/speed curve:
+     50px = 15 sec; 100px = 60 sec; 150px = 105 sec; 250px = 300 sec
+  Keep finger held after swipe = continue seeking until released
+  LEFT edge up/down = speed +/-0.05x every 50px
+  RIGHT edge up/down = volume
+  Center once = play/pause, twice = fullscreen, three times = stop/home
+  Two-or-more fingers are not used for seeking.
+  On-screen stop button is retained.
+
+The x64 client uses Qt + native MPV. Surface ARM64 uses WebView2 and is
+a DIFFERENT executable. Do not overwrite the Surface installation with this ZIP.
+Tests and Windows CI builds cannot substitute for verification on the actual PC.
