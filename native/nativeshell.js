@@ -1245,129 +1245,241 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     if (document.body) watchSeekbarPreviews();
     else document.addEventListener('DOMContentLoaded', watchSeekbarPreviews, {once: true});
 
-    // Touch v0.1: a separate gesture state; the mouse v0.5 math is unchanged.
+
+    // Surface v0.9 gesture parity for touchscreen Windows x64 (Qt + MPV).
+    // Keep all existing mouse drag, wheel and middle-click behavior above.
     const fingers = new Map();
     let touchGesture = null;
     let touchMouseUntil = 0;
     let touchBlocked = false;
     let stopButton = null;
-
-    function cancelTouch() {
-        hideFramePreview();
-        touchGesture = null;
+    let pendingTouchTap = null;
+    const TAP_WINDOW=400;
+    const TOUCH_SPEED_PIXELS=50;
+    function touchClockNow() { return performance.now(); }
+    function cancelPendingTap() {
+        if(pendingTouchTap) clearTimeout(pendingTouchTap.timer);
+        pendingTouchTap=null;
+    }
+    function cancelTouch(clearTap=true) {
+        const g=touchGesture;
+        if(g?.holdTimer != null) clearInterval(g.holdTimer);
+        touchGesture=null;
         fingers.clear();
-        touchBlocked = false;
+        touchBlocked=false;
+        hideFramePreview();
+        if(clearTap) cancelPendingTap();
     }
     function stopPlayback() {
         const ctx = getContext();
-        if (ctx.error || !ctx.manager?.stop) return;
-        cancelTouch();
-        resetDrag();
-        clearTimeout(singleClickTimer);
-        Promise.resolve(ctx.manager.stop(ctx.player)).catch(err => log('stop failed', {error: String(err)}));
+        if(ctx.error || !ctx.manager?.stop) return;
+        cancelTouch(); resetDrag(); clearTimeout(singleClickTimer);
+        Promise.resolve(ctx.manager.stop(ctx.player)).catch(err=>log('stop failed',{error:String(err)}));
     }
     function touchButton(show) {
-        if (!show) { if (stopButton) stopButton.style.display = 'none'; return; }
-        if (!document.body) return;
-        if (!stopButton) {
-            stopButton = document.createElement('button');
-            stopButton.type = 'button';
-            stopButton.textContent = '■ 停止';
-            stopButton.setAttribute('aria-label', '再生を停止して視聴位置を保存');
-            stopButton.style.cssText = 'position:fixed;right:18px;top:8%;min-width:88px;min-height:48px;z-index:2147483646;border:1px solid #aaa;border-radius:10px;background:#202028dd;color:white;font:600 17px sans-serif;touch-action:manipulation';
-            stopButton.addEventListener('click', stopPlayback);
+        if(!show){ if(stopButton) stopButton.style.display='none'; return; }
+        if(!document.body) return;
+        if(!stopButton){
+            stopButton=document.createElement('button');
+            stopButton.type='button';stopButton.textContent='■ 停止';
+            stopButton.setAttribute('aria-label','再生を停止して視聴位置を保存');
+            stopButton.style.cssText='position:fixed;right:18px;top:8%;min-width:88px;min-height:48px;z-index:2147483646;border:1px solid #aaa;border-radius:10px;background:#202028dd;color:white;font:600 17px sans-serif;touch-action:manipulation';
+            stopButton.addEventListener('click',stopPlayback);
         }
-        if (!stopButton.isConnected) document.body.appendChild(stopButton);
-        stopButton.style.display = 'block';
+        if(!stopButton.isConnected) document.body.appendChild(stopButton);
+        stopButton.style.display='block';
     }
-    // This applies only to the playback view, never the library pages. Native
-    // pan/zoom must be disabled before pointerdown for two-finger delivery.
-    const touchStyle = document.createElement('style');
-    touchStyle.textContent = '#videoOsdPage,.videoPlayerContainer{touch-action:none}';
-    (document.head || document.body)?.appendChild(touchStyle);
-
+    const touchStyle=document.createElement('style');
+    touchStyle.textContent='#videoOsdPage,.videoPlayerContainer{touch-action:none}';
+    (document.head||document.body)?.appendChild(touchStyle);
     function touchArea(e) {
-        return !getContext().error && !eligibleArea({target:e.target, clientY:e.clientY});
+        return !getContext().error && !eligibleArea({target:e.target,clientY:e.clientY});
     }
     function touchConsume(e) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        touchMouseUntil = performance.now() + 800;
+        e.preventDefault();e.stopImmediatePropagation();
+        touchMouseUntil=performance.now()+800;
     }
-    function touchBaseline() {
-        const points = [...fingers.values()];
-        const count = points.length;
-        const player = activePlayer;
-        const position = player?.currentTime();
-        const duration = Number(player?.duration());
-        if (!player || !Number.isFinite(position) || !(duration > 0)) { touchGesture = null; return; }
-        const x = points.reduce((n,p) => n+p.x,0)/count;
-        const y = points.reduce((n,p) => n+p.y,0)/count;
-        touchGesture = {player, native, button:count === 2 ? 2 : 0, start:position,
-            target:position, duration, x, y, dx:0, count, touch:true, mode:null,
-            tap:count === 1, rightEdge:count === 1 && x >= window.innerWidth * .85,
-            volume:Number(player.getVolume())};
-    }
-    function touchMove(e) {
-        const point = fingers.get(e.pointerId);
-        if (!point) return;
-        point.x = e.clientX; point.y = e.clientY;
-        const s = touchGesture;
-        if (!s || touchBlocked || activePlayer !== s.player) return;
-        const points = [...fingers.values()];
-        const dx = points.reduce((n,p)=>n+p.x,0)/points.length-s.x;
-        const dy = points.reduce((n,p)=>n+p.y,0)/points.length-s.y;
-        if (!s.mode && Math.max(Math.abs(dx),Math.abs(dy)) < DRAG_THRESHOLD) return;
-        s.tap = false;
-        if (!s.mode) s.mode = s.rightEdge && Math.abs(dy)>Math.abs(dx) ? 'volume' : Math.abs(dx)>=Math.abs(dy) ? 'seek' : 'ignore';
-        if (s.mode === 'volume') {
-            const value = Math.max(0,Math.min(100,Math.round(s.volume-dy*100/(window.innerHeight*.6))));
-            s.player.setVolume(value);
-            log('touch volume', {volume:value});
-        } else if (s.mode === 'seek') {
-            s.dx = dx;
-            s.target = clamp(s.start + dx*(s.count===2 ? LARGE_MS_PER_PX : SMALL_MS_PER_PX),s.duration);
-            const now = performance.now();
-            if (!s.lastSeek || now-s.lastSeek>=SEEK_THROTTLE_MS) { s.lastSeek=now; seek(s); }
+    function touchDelta(dx) {
+        const d=Math.abs(dx), stops=[[0,0],[50,15000],[100,60000],[150,105000],[250,300000]];
+        let ms=300000+(d-250)*1950;
+        for(let i=1;i<stops.length;i++)if(d<=stops[i][0]){
+            const [x0,y0]=stops[i-1],[x1,y1]=stops[i];
+            ms=y0+(d-x0)*(y1-y0)/(x1-x0);
+            break;
         }
+        return Math.sign(dx)*Math.min(900000,ms);
     }
-    window.addEventListener('pointerdown', e => {
-        if (e.pointerType !== 'touch') return;
-        if (!touchArea(e)) {
-            if (fingers.size) { touchBlocked=true; touchGesture=null; }
+    function updateTouchRate(s,dy) {
+        const base=Math.round(s.startRate*100),steps=Math.round(-dy/TOUCH_SPEED_PIXELS);
+        const speed=Math.max(50,Math.min(400,base+steps*5))/100;
+        if(speed!==Number(s.player.getPlaybackRate())) {
+            s.player.setPlaybackRate(speed);
+        }
+        showTouchValue('再生速度 '+speed.toFixed(2)+'×');
+    }
+    let touchValue=null;
+    function showTouchValue(label){
+        if(!document.body)return;
+        if(!touchValue) {
+            touchValue=document.createElement('div');
+            touchValue.id='jfd-surface-touch-value';
+            touchValue.style.cssText='position:fixed;top:41%;left:50%;transform:translate(-50%,-50%);z-index:2147483646;pointer-events:none;padding:14px 25px;background:#111d;color:#fff;border:1px solid #fff5;border-radius:12px;font:600 22px sans-serif';
+        }
+        if(!touchValue.isConnected) document.body.appendChild(touchValue);
+        touchValue.textContent=label;touchValue.style.display='block';
+    }
+    function hideTouchValue(){if(touchValue)touchValue.style.display='none';}
+    function toggleTouchPlay(player) {
+        if(player.paused())player.unpause();else player.pause();
+    }
+    function toggleTouchFullscreen(player) {
+        // The Qt host handles the actual window state, not HTML5 fullscreen.
+        if(window.api?.input?.executeActions)
+            window.api.input.executeActions(['host:fullscreen']);
+        else if(typeof player.toggleFullscreen==='function')
+            player.toggleFullscreen();
+    }
+    function resolveTouchTap(entry) {
+        if(pendingTouchTap!==entry)return;
+        pendingTouchTap=null;
+        if(entry.count===1)toggleTouchPlay(entry.player);
+        else if(entry.count===2)toggleTouchFullscreen(entry.player);
+    }
+    function touchFinishTap(s) {
+        const now=touchClockNow();
+        const center=s.x>=window.innerWidth*.32&&s.x<=window.innerWidth*.68&&
+            s.y>=window.innerHeight*.25&&s.y<=window.innerHeight*.75;
+        const prev=pendingTouchTap;
+        const matched=center&&prev&&prev.player===s.player&&now-prev.at<=TAP_WINDOW&&
+            Math.abs(prev.x-s.x)<85&&Math.abs(prev.y-s.y)<85;
+        if(matched) {
+            clearTimeout(prev.timer);
+            prev.count++;prev.x=s.x;prev.y=s.y;prev.at=now;
+            if(prev.count===3){pendingTouchTap=null;stopPlayback();}
+            else prev.timer=setTimeout(()=>resolveTouchTap(prev),TAP_WINDOW);
             return;
         }
-        touchConsume(e);
-        resetDrag(); clearTimeout(singleClickTimer);
-        touchButton(true);
-        fingers.set(e.pointerId,{x:e.clientX,y:e.clientY});
-        if (fingers.size>2) { touchBlocked=true; touchGesture=null; return; }
-        if (!touchBlocked) touchBaseline();
-        try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
-    }, {capture:true,passive:false});
-    window.addEventListener('pointermove', e => {
-        if (e.pointerType!=='touch' || !fingers.has(e.pointerId)) return;
-        touchConsume(e); touchMove(e);
-    }, {capture:true,passive:false});
-    window.addEventListener('pointerup', e => {
-        if (e.pointerType!=='touch' || !fingers.has(e.pointerId)) return;
-        touchConsume(e); touchMove(e);
+        if(prev){clearTimeout(prev.timer);resolveTouchTap(prev);}
+        if(!center){toggleTouchPlay(s.player);return;}
+        const entry={player:s.player,x:s.x,y:s.y,at:now,count:1,timer:null};
+        pendingTouchTap=entry;
+        entry.timer=setTimeout(()=>resolveTouchTap(entry),TAP_WINDOW);
+    }
+    function touchAdvanceHold(s,now) {
+        if(s.mode!=='seek')return;
+        const elapsed=Math.max(0,Math.min(.5,(now-s.lastTick)/1000));
+        s.lastTick=now;
+        if(!elapsed||!s.rate)return;
+        s.holdOffset+=s.rate*elapsed;
+        s.target=clamp(s.start+s.travel+s.holdOffset,s.duration);
+    }
+    function touchSetDelta(s,dx) {
+        if(s.holdOnly&&Math.abs(dx)<10)return;
+        s.holdOnly=false;
+        s.dx=dx;s.travel=touchDelta(dx);s.rate=s.travel;
+        s.lastTick=touchClockNow();
+        s.target=clamp(s.start+s.travel+s.holdOffset,s.duration);
+        touchSeek(s);
+    }
+    function touchSeek(s,force=false){
+        const now=touchClockNow();
+        if(!force && now-s.lastSeek<250)return;
+        s.lastSeek=now;
+        seek(s,force);
+    }
+    function touchStartHold(s) {
+        s.startedAt=touchClockNow();s.lastTick=s.startedAt;
+        s.holdOffset=0;s.travel=0;s.rate=0;s.holdOnly=false;
+        s.lastSeek=-Infinity;
+        s.holdTimer=setInterval(()=>{
+            if(touchGesture!==s||touchBlocked||fingers.size!==1||activePlayer!==s.player||!s.player.currentSrc()){
+                if(s.holdTimer!=null)clearInterval(s.holdTimer);
+                s.holdTimer=null;return;
+            }
+            const now=touchClockNow();
+            // Leftmost 15% is for speed; rewind hold begins just beyond it.
+            if(!s.mode && now-s.startedAt>=500 &&
+               ((s.x>window.innerWidth*.15&&s.x<window.innerWidth*.32)||s.x>window.innerWidth*.68)){
+                s.mode='seek';s.tap=false;s.holdOnly=true;
+                s.rate=s.x<window.innerWidth*.32?-15000:15000;
+                s.lastTick=now;return;
+            }
+            if(s.mode!=='seek')return;
+            const before=s.target;
+            touchAdvanceHold(s,now);
+            if(s.target!==before)touchSeek(s);
+        },250);
+    }
+    function touchBaseline(e) {
+        const player=activePlayer;
+        const position=Number(player?.currentTime()),duration=Number(player?.duration());
+        if(!player||!Number.isFinite(position)||!(duration>0))return;
+        const startRate=Number(player.getPlaybackRate?.()||1);
+        const s={player,native,button:0,start:position,target:position,duration,
+            x:e.clientX,y:e.clientY,dx:0,tap:true,mode:null,count:1,touch:true,
+            rightEdge:e.clientX>=window.innerWidth*.85,
+            leftEdge:e.clientX<=window.innerWidth*.15,
+            startRate:Number.isFinite(startRate)?Math.max(.5,Math.min(4,Math.round(startRate*20)/20)):1,
+            volume:Number(player.getVolume()),holdTimer:null};
+        touchGesture=s;touchStartHold(s);
+    }
+    function touchMove(e) {
+        const point=fingers.get(e.pointerId);
+        if(!point)return;
+        point.x=e.clientX;point.y=e.clientY;
         const s=touchGesture;
-        if (s && !touchBlocked && activePlayer===s.player) {
-            if (s.mode==='seek') seek(s, true);
-            else if (s.tap && s.count===1) {
-                if (s.player.paused()) s.player.unpause(); else s.player.pause();
+        if(!s||touchBlocked||activePlayer!==s.player)return;
+        const dx=e.clientX-s.x,dy=e.clientY-s.y;
+        if(!s.mode && Math.max(Math.abs(dx),Math.abs(dy))<10)return;
+        s.tap=false;
+        if(!s.mode)s.mode=s.rightEdge&&Math.abs(dy)>Math.abs(dx)?'volume':
+            s.leftEdge&&Math.abs(dy)>Math.abs(dx)?'speed':
+            Math.abs(dx)>=Math.abs(dy)?'seek':'ignore';
+        if(s.mode==='volume'){
+            const volume=Math.max(0,Math.min(100,Math.round(s.volume-dy*100/(window.innerHeight*.6))));
+            s.player.setVolume(volume);showTouchValue('音量 '+volume+'%');
+        }else if(s.mode==='speed')updateTouchRate(s,dy);
+        else if(s.mode==='seek')touchSetDelta(s,dx);
+    }
+    window.addEventListener('pointerdown',e=>{
+        if(e.pointerType!=='touch')return;
+        if(touchBlocked){touchConsume(e);return;}
+        if(fingers.size){
+            touchConsume(e);
+            if(touchGesture?.holdTimer!=null)clearInterval(touchGesture.holdTimer);
+            touchGesture=null;touchBlocked=true;fingers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+            hideFramePreview();hideTouchValue();return;
+        }
+        if(!touchArea(e))return;
+        touchConsume(e);resetDrag();clearTimeout(singleClickTimer);touchButton(true);
+        fingers.set(e.pointerId,{x:e.clientX,y:e.clientY});touchBaseline(e);
+        try{e.target?.setPointerCapture?.(e.pointerId);}catch(_){}
+    },{capture:true,passive:false});
+    window.addEventListener('pointermove',e=>{
+        if(e.pointerType!=='touch'||!fingers.has(e.pointerId))return;
+        touchConsume(e);if(!touchBlocked)touchMove(e);
+    },{capture:true,passive:false});
+    window.addEventListener('pointerup',e=>{
+        if(e.pointerType!=='touch'||!fingers.has(e.pointerId))return;
+        touchConsume(e);
+        if(!touchBlocked) {
+            touchMove(e);
+            const s=touchGesture;
+            if(s&&activePlayer===s.player){
+                if(s.mode==='seek'){touchAdvanceHold(s,touchClockNow());touchSeek(s,true);}
+                else if(s.tap)touchFinishTap(s);
             }
         }
-        fingers.delete(e.pointerId);
-        // Never turn a two-finger gesture into a tap/one-finger seek on lift.
+        if(touchGesture?.holdTimer!=null)clearInterval(touchGesture.holdTimer);
         touchGesture=null;
-        if (fingers.size) touchBlocked=true; else cancelTouch();
-    }, {capture:true,passive:false});
-    window.addEventListener('pointercancel', cancelTouch, true);
-    window.addEventListener('lostpointercapture', e => { if (fingers.has(e.pointerId)) cancelTouch(); }, true);
-    window.addEventListener('blur', cancelTouch);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelTouch(); });
+        fingers.delete(e.pointerId);
+        hideFramePreview();hideTouchValue();
+        if(!fingers.size)touchBlocked=false;
+    },{capture:true,passive:false});
+    window.addEventListener('pointercancel',e=>{if(e.pointerType==='touch'&&fingers.has(e.pointerId))cancelTouch();},true);
+    window.addEventListener('lostpointercapture',e=>{if(fingers.has(e.pointerId))cancelTouch();},true);
+    window.addEventListener('blur',()=>cancelTouch());
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelTouch();});
 
     if (window.apiPromise && typeof window.apiPromise.then === 'function') {
         window.apiPromise.then(bindNativePlayer).catch(err => log('Qt API promise failed', {error: String(err)}));
