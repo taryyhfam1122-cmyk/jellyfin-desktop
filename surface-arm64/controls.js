@@ -93,7 +93,7 @@
     }
     function clamp(value, max) { return Math.max(0, Math.min(max, value)); }
     // Update playback while the finger is on screen, at most every 250ms.
-    // The trickplay preview follows every move; no seeks occur while stationary.
+    // A stationary finger continues seeking until release; the preview follows each update.
     function liveSeek(g, force=false) {
         const now = performance.now();
         if (!force && now-g.lastSeekAt < 250) return;
@@ -104,6 +104,55 @@
             g.lastSeekAt=now;
             report('seek-live');
         } catch (_) { report('seek-error'); }
+    }
+
+    function stopHold(g) {
+        if(g && g.holdTimer!=null) {
+            clearInterval(g.holdTimer);
+            g.holdTimer=null;
+        }
+    }
+    function advanceHold(g, now) {
+        if(g.mode!=='seek') return;
+        const elapsed=Math.max(0,Math.min(.5,(now-g.lastTickAt)/1000));
+        g.lastTickAt=now;
+        if(!elapsed || !g.rate) return;
+        g.holdOffset+=g.rate*elapsed;
+        g.target=clamp(g.start+g.travelDelta+g.holdOffset,g.duration-.5);
+    }
+    function updateSwipe(g,dx) {
+        if(g.holdOnly && Math.abs(dx)<15) return;
+        g.holdOnly=false;
+        const seconds=seekDelta(dx);
+        g.travelDelta=seconds;
+        g.rate=seconds;  // video seconds per held second; signed
+        g.lastTickAt=performance.now();
+        g.target=clamp(g.start+g.travelDelta+g.holdOffset,g.duration-.5);
+        report('seek-preview');
+        showSeekOverlay(g.target,g.duration);
+        liveSeek(g);
+    }
+    function startHold(g,isActive) {
+        g.startedAt=performance.now(); g.lastTickAt=g.startedAt;
+        g.rate=0; g.travelDelta=0; g.holdOffset=0; g.holdOnly=false;
+        g.holdTimer=setInterval(()=>{
+            if(!isActive() || g.v!==video()){stopHold(g);return;}
+            const now=performance.now();
+            if(!g.mode && now-g.startedAt>=500 &&
+                (g.x<innerWidth*.32 || g.x>innerWidth*.68)) {
+                g.mode='seek'; g.tap=false; g.holdOnly=true;
+                g.rate=g.x<innerWidth*.32 ? -15 : 15;
+                g.lastTickAt=now;
+                report('seek-hold');
+                showSeekOverlay(g.target,g.duration);
+                return;
+            }
+            if(g.mode!=='seek') return;
+            advanceHold(g,now);
+            report('seek-preview');
+            showSeekOverlay(g.target,g.duration);
+            liveSeek(g);
+        },250);
     }
     function video() {
         const elements = [...document.querySelectorAll('.videoPlayerContainer video, video')];
@@ -160,12 +209,15 @@
         if (!v || !fingers.size) {gesture = null; return;}
         report('gesture-start');
         const p = centroid();
+        stopHold(gesture);
         gesture = {
             v, count: fingers.size, x: p.x, y:p.y, duration:v.duration,
             start:v.currentTime, target:v.currentTime, volume:v.volume,
             lastSentTarget:v.currentTime, lastSeekAt:-Infinity,
             mode:null, tap:true, rightEdge:p.x >= innerWidth*.85
         };
+        const current=gesture;
+        startHold(current,()=>gesture===current && fingers.size===1 && !touchStream);
         window.__jfdTrickplayPreview?.prefetch(v.currentTime,v.duration);
     }
     window.addEventListener('pointerdown', e => {
@@ -181,6 +233,7 @@
             // Multi-touch cancels the gesture until *all* fingers are up.
             for (const id of fingers.keys()) blockedPointers.add(id);
             blockedPointers.add(e.pointerId);
+            stopHold(gesture);
             gesture=null; fingers.clear(); hideOverlay();
             e.preventDefault(); e.stopImmediatePropagation();
             return;
@@ -210,10 +263,7 @@
             g.v.muted=false;
             showOverlay('音量 '+Math.round(volume*100)+'%');
         } else if (g.mode === 'seek') {
-            g.target=clamp(g.start+seekDelta(dx),g.duration-.5);
-            report('seek-preview');
-            showSeekOverlay(g.target,g.duration);
-            liveSeek(g);
+            updateSwipe(g,dx);
         }
     }, {capture:true, passive:false});
 
@@ -223,6 +273,7 @@
         e.stopImmediatePropagation();
         if (!cancelled && gesture && gesture.v === video()) {
             if (gesture.mode==='seek') {
+                advanceHold(gesture,performance.now());
                 liveSeek(gesture,true);
                 report('seek-committed');
             } else if (gesture.tap && gesture.count===1) {
@@ -230,6 +281,7 @@
             }
         }
         fingers.delete(e.pointerId);
+        stopHold(gesture);
         // Never turn a two-finger seek into a one-finger tap on release.
         gesture = null;
         hideOverlay();
@@ -268,11 +320,14 @@
         const v = video();
         if (!v || !touchPoints.size) {touchGesture=null; return;}
         const p = touchCentroid();
+        stopHold(touchGesture);
         touchGesture = {v, count:touchPoints.size, x:p.x, y:p.y,
             duration:v.duration, start:v.currentTime, target:v.currentTime,
             lastSentTarget:v.currentTime, lastSeekAt:-Infinity,
             volume:v.volume, mode:null, tap:true,
             rightEdge:p.x >= innerWidth * .85};
+        const current=touchGesture;
+        startHold(current,()=>touchGesture===current && touchStream && !touchBlocked && touchPoints.size===1);
         window.__jfdTrickplayPreview?.prefetch(v.currentTime,v.duration);
         report('touch-start');
     }
@@ -287,6 +342,7 @@
             if (touchStream || touchPoints.size) {
                 touchBlocked=true;
                 touchStream=true;
+                stopHold(touchGesture); stopHold(gesture);
                 touchGesture=null;
                 touchPoints.clear();
                 fingers.clear();
@@ -302,6 +358,7 @@
         if (!touchPoints.size && !inVideoArea({clientX:t.clientX, clientY:t.clientY, target:e.target},v)) return;
         e.preventDefault(); e.stopImmediatePropagation();
         touchStream=true;
+        stopHold(gesture);
         fingers.clear();
         blockedPointers.clear();
         gesture=null;
@@ -327,10 +384,7 @@
             g.v.muted=false;
             showOverlay('音量 '+Math.round(g.v.volume*100)+'%');
         } else if (g.mode==='seek') {
-            g.target=clamp(g.start+seekDelta(dx),g.duration-.5);
-            report('seek-preview');
-            showSeekOverlay(g.target,g.duration);
-            liveSeek(g);
+            updateSwipe(g,dx);
         }
     },{capture:true,passive:false});
 
@@ -340,12 +394,14 @@
         const g=touchGesture;
         if (!cancelled && g && g.v===video()) {
             if (g.mode==='seek') {
+                advanceHold(g,performance.now());
                 liveSeek(g,true);
                 report('seek-committed');
             } else if (g.tap && g.count===1) {
                 finishTap(g);
             }
         }
+        stopHold(touchGesture);
         touchGesture=null;
         touchPoints.clear();
         touchStream=false;
@@ -374,6 +430,7 @@
         }
     },true);
     window.addEventListener('blur',()=>{
+        stopHold(gesture); stopHold(touchGesture);
         fingers.clear(); blockedPointers.clear(); gesture=null;
         touchPoints.clear(); touchGesture=null; touchStream=false; touchBlocked=false;
         hideOverlay();
