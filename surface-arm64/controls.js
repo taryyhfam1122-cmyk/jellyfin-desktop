@@ -13,9 +13,18 @@
     let touchBlocked = false;
     let pendingCenterTap = null;
 
-    // A delayed single center tap permits double tap without pausing first.
+    // A delayed center tap toggles the native window's fullscreen state.
+    // Double center tap continues to stop playback and return home.
     function playPause(v) {
         if (v.paused) v.play().catch(()=>{}); else v.pause();
+    }
+    function toggleFullscreen() {
+        // Request a native WinForms fullscreen transition; do not use the
+        // video's HTML fullscreen API, which would hide native exit controls.
+        try {
+            window.chrome?.webview?.postMessage({type:'jfd-player-action',action:'toggle-fullscreen'});
+            report('center-fullscreen');
+        } catch (_) { }
     }
     function finishTap(g) {
         if (!g || g.count !== 1) return;
@@ -35,7 +44,7 @@
         }
         if(pendingCenterTap) {
             clearTimeout(pendingCenterTap.timer);
-            playPause(pendingCenterTap.v);
+            toggleFullscreen();
             pendingCenterTap=null;
         }
         if(!center){playPause(g.v);return;}
@@ -44,7 +53,7 @@
         entry.timer=setTimeout(()=>{
             if(pendingCenterTap!==entry)return;
             pendingCenterTap=null;
-            playPause(entry.v);
+            toggleFullscreen();
         },400);
     }
 
@@ -76,12 +85,12 @@
     }
     report('script-loaded');
 
-    // Distance-dependent precision for a single finger, expressed in CSS px.
-    // 30px=4.5s, 100px=15s, 200px=60s, 300px=105s, 500px=300s.
+    // v0.6: same seek range as v0.5 with HALF the finger travel (CSS px).
+    // 10px=3s, 50px=15s, 100px=60s, 150px=105s, 250px=300s.
     function seekDelta(dx) {
         const distance = Math.abs(dx);
-        const stops = [[0,0],[100,15],[200,60],[300,105],[500,300]];
-        let seconds = 300 + (distance - 500) * .975;
+        const stops = [[0,0],[50,15],[100,60],[150,105],[250,300]];
+        let seconds = 300 + (distance - 250) * 1.95;
         for (let i=1; i<stops.length; i++) {
             if (distance <= stops[i][0]) {
                 const [x0,y0] = stops[i-1], [x1,y1] = stops[i];
@@ -121,7 +130,7 @@
         g.target=clamp(g.start+g.travelDelta+g.holdOffset,g.duration-.5);
     }
     function updateSwipe(g,dx) {
-        if(g.holdOnly && Math.abs(dx)<15) return;
+        if(g.holdOnly && Math.abs(dx)<10) return;
         g.holdOnly=false;
         const seconds=seekDelta(dx);
         g.travelDelta=seconds;
@@ -253,7 +262,7 @@
         const g=gesture;
         if (!g || g.v !== video() || fingers.size !== g.count) return;
         const p=centroid(), dx=p.x-g.x, dy=p.y-g.y;
-        if (!g.mode && Math.max(Math.abs(dx),Math.abs(dy)) < 15) return;
+        if (!g.mode && Math.max(Math.abs(dx),Math.abs(dy)) < 10) return;
         g.tap=false;
         if (!g.mode) g.mode = g.rightEdge && Math.abs(dy)>Math.abs(dx) ? 'volume'
                             : Math.abs(dx)>=Math.abs(dy) ? 'seek' : 'ignore';
@@ -375,7 +384,7 @@
         const g=touchGesture;
         if (!g || g.v !== video() || touchPoints.size!==g.count) return;
         const p=touchCentroid(), dx=p.x-g.x, dy=p.y-g.y;
-        if (!g.mode && Math.max(Math.abs(dx),Math.abs(dy))<15) return;
+        if (!g.mode && Math.max(Math.abs(dx),Math.abs(dy))<10) return;
         g.tap=false;
         if (!g.mode) g.mode=g.rightEdge && Math.abs(dy)>Math.abs(dx) ? 'volume'
             : Math.abs(dx)>=Math.abs(dy) ? 'seek':'ignore';
