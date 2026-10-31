@@ -478,6 +478,44 @@
             e.preventDefault(); e.stopImmediatePropagation();
         }
     },true);
+    // Home/library only: double tap on empty content toggles native fullscreen.
+    // Never intercept a single tap, scrolling, navigation controls or playback.
+    let homeStart=null, homeLastTap=null, homeLastEvent=null;
+    function isHomeGestureTarget(target) {
+        return !video() && !avoidUi(target) &&
+            !target?.closest?.('a,button,input,textarea,select,[role="button"],[role="link"],.card,.cardBox,.itemAction');
+    }
+    function homeTap(x,y,target) {
+        if (!isHomeGestureTarget(target)) {homeLastTap=null;return;}
+        const now=Date.now();
+        if(homeLastEvent && now-homeLastEvent.at<80 &&
+            Math.abs(x-homeLastEvent.x)<12 && Math.abs(y-homeLastEvent.y)<12)
+            return; // WebView2 can emit both touchend and pointerup.
+        homeLastEvent={at:now,x,y};
+        const prev=homeLastTap;
+        if(prev && now-prev.at<=DOUBLE_TAP_WINDOW_MS &&
+            Math.abs(x-prev.x)<85 && Math.abs(y-prev.y)<85) {
+            homeLastTap=null;
+            toggleFullscreen();
+        } else homeLastTap={at:now,x,y};
+    }
+    window.addEventListener('pointerdown',e=>{
+        if(e.pointerType!=='touch'||!isHomeGestureTarget(e.target))return;
+        homeStart={id:e.pointerId,x:e.clientX,y:e.clientY,target:e.target};
+    },{capture:true,passive:true});
+    window.addEventListener('pointerup',e=>{
+        const p=homeStart;
+        if(e.pointerType!=='touch'||!p||p.id!==e.pointerId)return;
+        homeStart=null;
+        if(Math.abs(e.clientX-p.x)<12 && Math.abs(e.clientY-p.y)<12)
+            homeTap(e.clientX,e.clientY,p.target);
+    },{capture:true,passive:true});
+    window.addEventListener('touchend',e=>{
+        if(video()||!e.changedTouches||e.changedTouches.length!==1||e.touches?.length)return;
+        const t=e.changedTouches[0];
+        homeTap(t.clientX,t.clientY,e.target);
+    },{capture:true,passive:true});
+
     window.addEventListener('blur',()=>{
         stopHold(gesture); stopHold(touchGesture);
         fingers.clear(); blockedPointers.clear(); gesture=null;
