@@ -623,9 +623,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             event.stopPropagation();
             if (window.api?.input?.executeActions)
                 window.api.input.executeActions(['host:fullscreen']);
-            else if (window.jmpInfo?.settings?.main)
-                window.jmpInfo.settings.main.fullscreen =
-                    !window.jmpInfo.settings.main.fullscreen;
+            // The actual window-state update arrives via settingsUpdate.
             scheduleRefresh();
         });
         document.body.appendChild(tab);
