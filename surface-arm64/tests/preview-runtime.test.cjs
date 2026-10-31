@@ -39,7 +39,7 @@ function createHarness(){
     const ctx={window,document:doc,location:{origin:'http://jellyfin.test:30013',href:'http://jellyfin.test:30013/web/#/home'},
         Image:FakeImage,URL,Promise,Number,Math,String,Map,console};
     vm.runInNewContext(source,ctx);
-    return {api:window.__jfdTrickplayPreview,calls,messages,root,canvas,imageCount:()=>imageCount};
+    return {api:window.__jfdTrickplayPreview,calls,messages,root,canvas, label:()=>objects[1]?.textContent, imageCount:()=>imageCount};
 }
 test('Jellyfin Web seekbar authorizes same sprite and full-size image draws correct tile',async()=>{
     const h=createHarness();
@@ -64,4 +64,15 @@ test('full screen preview uses Jellyfin Web slider updateBubbleHtml without read
     assert.match(source,/sprite\.x,sprite\.y,sprite\.width,sprite\.height/);
     assert.doesNotMatch(source,/localStorage|ApiClient\.accessToken|sessionStorage/);
     assert.match(source,/uri\.origin !== location\.origin/);
+});
+
+test('trickplay overlay labels seek destination and full video duration',async()=>{
+    const h=createHarness();
+    assert.equal(h.api.show(83,600),true);
+    assert.equal(h.label(),'シーク先 1:23 / 全体 10:00');
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(h.root.style.display,'flex');
+    assert.equal(h.api.show(83,7265),true);
+    assert.equal(h.label(),'シーク先 1:23 / 全体 2:01:05');
+    h.api.hide();
 });
