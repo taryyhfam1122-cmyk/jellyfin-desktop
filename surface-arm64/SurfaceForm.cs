@@ -34,10 +34,11 @@ public sealed class SurfaceForm : Form
         var exit = Button("終了 ✕", 95, Close);
         var leaveFullscreen = Button("通常表示", 102, ToggleFullscreen);
         var fullHome = Button("ホーム", 90, () => _ = StopAndHomeAsync());
+        var fullRefresh = Button("更新 ↻", 100, () => _browser.Reload());
         var fullExit = Button("アプリを終了 ✕", 148, Close);
 
         _toolbar.Controls.AddRange([back, home, _server, connect, refresh, full, exit]);
-        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullExit]);
+        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullRefresh, fullExit]);
         Controls.Add(_browser);
         Controls.Add(_toolbar);
         Controls.Add(_fullscreenBar);
