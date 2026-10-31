@@ -240,7 +240,7 @@
     }
     function showSeekOverlay(target,duration) {
         if(window.__jfdTrickplayPreview?.show(target,duration)!==true)
-            showOverlay(formatTime(target)+' / '+formatTime(duration));
+            showOverlay('シーク先 '+formatTime(target)+' / 全体 '+formatTime(duration));
         else if(overlay) overlay.style.display='none';
     }
     function baseline() {
