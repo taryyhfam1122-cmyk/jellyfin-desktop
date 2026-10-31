@@ -601,6 +601,36 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     window.__jfdFullscreenHomeCloseV01 = true;
 
     const BUTTON_ID = 'jfd-fullscreen-home-close';
+    const TAB_ID = 'jfd-home-fullscreen-tab';
+
+    // The Qt window owns fullscreen. Use the same host action as F11, rather
+    // than the HTML fullscreen API which only affects the browser content.
+    function ensureFullscreenTab() {
+        let tab = document.getElementById(TAB_ID);
+        if (tab) return tab;
+        tab = document.createElement('button');
+        tab.id = TAB_ID;
+        tab.type = 'button';
+        tab.setAttribute('aria-label', '全画面・通常表示を切り替える');
+        tab.title = '全画面と通常表示を切り替える';
+        tab.style.cssText = 'position:fixed;top:12px;right:68px;min-width:122px;height:44px;'
+            + 'z-index:2147483646;display:none;padding:0 14px;'
+            + 'border:1px solid #777;border-radius:8px;background:rgba(24,24,28,.91);'
+            + 'color:#fff;font:600 15px/1 system-ui,sans-serif;cursor:pointer;'
+            + 'user-select:none;touch-action:manipulation;';
+        tab.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (window.api?.input?.executeActions)
+                window.api.input.executeActions(['host:fullscreen']);
+            else if (window.jmpInfo?.settings?.main)
+                window.jmpInfo.settings.main.fullscreen =
+                    !window.jmpInfo.settings.main.fullscreen;
+            scheduleRefresh();
+        });
+        document.body.appendChild(tab);
+        return tab;
+    }
     let videoActive = false;
     let refreshQueued = false;
 
@@ -635,6 +665,13 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         // Do not show on top of video controls or while a video is loading.
         const show = fullscreen && !videoActive &&
             !document.querySelector('.videoPlayerContainer');
+        const hasVideo = videoActive || !!document.querySelector('.videoPlayerContainer');
+        const tab = !hasVideo ? ensureFullscreenTab() : document.getElementById(TAB_ID);
+        if (tab) {
+            tab.style.display = !hasVideo ? 'block' : 'none';
+            tab.textContent = fullscreen ? '▣ 通常表示' : '⛶ 全画面';
+            tab.setAttribute('aria-pressed', fullscreen ? 'true' : 'false');
+        }
         const button = show ? ensureButton() : document.getElementById(BUTTON_ID);
         if (button) button.style.display = show ? 'flex' : 'none';
     }
