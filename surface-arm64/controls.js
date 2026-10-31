@@ -13,64 +13,53 @@
     let touchBlocked = false;
     let pendingCenterTap = null;
 
-    // One center tap: playback toggle; double: native fullscreen toggle;
-    // triple: stop the video and return to Jellyfin home.
-    // Delay the double-tap action to leave room for a third tap.
-    const CENTER_TAP_WINDOW_MS=400;
+    // Single tap: play/pause. Double tap: upper 25% toggles native
+    // fullscreen; everywhere else in the video stops playback and goes home.
+    // Triple-tap gestures are no longer assigned any action.
+    const DOUBLE_TAP_WINDOW_MS=400;
+    const TOP_FULLSCREEN_FRACTION=.25;
     function playPause(v) {
-        if (v.paused) v.play().catch(()=>{}); else v.pause();
+        if(v.paused)v.play().catch(()=>{});else v.pause();
     }
     function toggleFullscreen() {
-        // Use native fullscreen so the close/home toolbar stays accessible.
         try {
             window.chrome?.webview?.postMessage({type:'jfd-player-action',action:'toggle-fullscreen'});
-            report('center-fullscreen');
+            report('top-double-fullscreen');
         } catch (_) {}
     }
     function closeVideoHome(v) {
         v.pause();
-        report('triple-tap-home');
-        // Preserve Jellyfin Web playback reporting through native SPA navigation.
-        try {
-            window.chrome?.webview?.postMessage({type:'jfd-player-action',action:'stop-home'});
-        } catch (_) {}
+        report('double-tap-home');
+        try {window.chrome?.webview?.postMessage({type:'jfd-player-action',action:'stop-home'});}
+        catch (_) {}
     }
-    function resolveCenterTap(entry) {
-        if (pendingCenterTap!==entry) return;
+    function resolveSingleTap(entry) {
+        if(pendingCenterTap!==entry)return;
         pendingCenterTap=null;
-        if(entry.count===1) playPause(entry.v);
-        else if(entry.count===2) toggleFullscreen();
+        playPause(entry.v);
     }
     function finishTap(g) {
-        if (!g || g.count!==1) return;
-        const x=g.x, y=g.y, now=Date.now();
-        const center=x>=innerWidth*.32 && x<=innerWidth*.68 &&
-                     y>=innerHeight*.25 && y<=innerHeight*.75;
+        if(!g || g.count!==1)return;
+        const x=g.x,y=g.y,now=Date.now();
+        const upper=y<innerHeight*TOP_FULLSCREEN_FRACTION;
         const pending=pendingCenterTap;
-        const sameSeries=center && pending && pending.v===g.v &&
-            now-pending.at<=CENTER_TAP_WINDOW_MS &&
+        const pair=pending && pending.v===g.v &&
+            pending.upper===upper && now-pending.at<=DOUBLE_TAP_WINDOW_MS &&
             Math.abs(x-pending.x)<85 && Math.abs(y-pending.y)<85;
-        if (sameSeries) {
+        if(pair) {
             clearTimeout(pending.timer);
-            pending.count++;
-            pending.x=x; pending.y=y; pending.at=now;
-            if (pending.count===3) {
-                pendingCenterTap=null;
-                closeVideoHome(g.v);
-            } else {
-                // No fullscreen transition yet: a third tap may follow.
-                pending.timer=setTimeout(()=>resolveCenterTap(pending),CENTER_TAP_WINDOW_MS);
-            }
+            pendingCenterTap=null;
+            if(upper)toggleFullscreen();
+            else closeVideoHome(g.v);
             return;
         }
-        if (pending) {
+        if(pending){
             clearTimeout(pending.timer);
-            resolveCenterTap(pending);
+            resolveSingleTap(pending);
         }
-        if(!center){playPause(g.v);return;}
-        const entry={v:g.v,x,y,at:now,count:1,timer:null};
+        const entry={v:g.v,x,y,upper,at:now,timer:null};
         pendingCenterTap=entry;
-        entry.timer=setTimeout(()=>resolveCenterTap(entry),CENTER_TAP_WINDOW_MS);
+        entry.timer=setTimeout(()=>resolveSingleTap(entry),DOUBLE_TAP_WINDOW_MS);
     }
 
     // Chromium may turn a pointer stream into a scroll gesture and send
