@@ -78,3 +78,14 @@ test('left edge speed handler uses 0.5x steps without changing horizontal seek m
     assert.match(source,/showOverlay\('再生速度 '/);
     assert.doesNotMatch(source,/localStorage|accessToken|ApiKey|Authorization/);
 });
+
+test('home page double tap toggles native fullscreen without changing video gestures',()=>{
+    assert.match(source,/function isHomeGestureTarget\(target\)/);
+    assert.match(source,/!video\(\) && !avoidUi\(target\)/);
+    assert.match(source,/homeLastTap=null;\s*toggleFullscreen\(\)/);
+    assert.match(source,/function homeTap\(x,y,target\)/);
+    assert.match(source,/homeTap\(e\.clientX,e\.clientY,p\.target\)/);
+    assert.match(source,/homeTap\(t\.clientX,t\.clientY,e\.target\)/);
+    assert.match(source,/if\(upper\)toggleFullscreen\(\)/);
+    assert.match(source,/else closeVideoHome\(g\.v\)/);
+});
