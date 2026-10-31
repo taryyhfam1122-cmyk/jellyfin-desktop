@@ -457,3 +457,13 @@ test('speed gesture cancellation never triggers an extra tap',()=>{
     assert.equal(h.pauses(),0);
     assert.equal(h.activeTimers(),0);
 });
+
+test('seek fallback overlay includes both target position and total runtime',()=>{
+    const h=harness();
+    start(h,300);
+    move(h,350);
+    assert.equal(h.overlayLabel(),'シーク先 2:15 / 全体 10:00');
+    move(h,400);
+    assert.equal(h.overlayLabel(),'シーク先 3:00 / 全体 10:00');
+    end(h,400);
+});
