@@ -54,21 +54,16 @@ test('WebView2 touch and pointer streams and diagnostics remain supported',()=>{
     assert.match(source,/report\('seek-live'\)/);
 });
 
-test('center tap series maps double to fullscreen and triple to closing the video',()=>{
-    assert.match(source,/const CENTER_TAP_WINDOW_MS=400/);
-    assert.match(source,/pending\.count\+\+/);
-    assert.match(source,/pending\.count===3/);
-    assert.match(source,/function toggleFullscreen\(\)/);
-    assert.match(source,/function closeVideoHome\(v\)/);
+test('top 25 percent double tap toggles fullscreen; the rest stops playback',()=>{
+    assert.match(source,/const TOP_FULLSCREEN_FRACTION=\.25/);
+    assert.match(source,/const DOUBLE_TAP_WINDOW_MS=400/);
+    assert.match(source,/pending\.upper===upper/);
+    assert.match(source,/if\(upper\)toggleFullscreen\(\)/);
+    assert.match(source,/else closeVideoHome\(g\.v\)/);
     assert.match(source,/action:'toggle-fullscreen'/);
     assert.match(source,/action:'stop-home'/);
-    assert.match(source,/report\('triple-tap-home'\)/);
-    assert.match(source,/clearTimeout\(pending\.timer\)/);
-    assert.match(source,/clearTimeout\(pendingCenterTap\.timer\)/);
-    assert.match(source,/Math\.max\(Math\.abs\(dx\),Math\.abs\(dy\)\) < 10/);
-    assert.match(source,/Math\.max\(Math\.abs\(dx\),Math\.abs\(dy\)\)<10/);
+    assert.doesNotMatch(source,/triple-tap-home|pending\.count===3/);
 });
-
 test('left edge speed handler uses 0.5x steps without changing horizontal seek math',()=>{
     assert.match(source,/const SPEED_STEP_PX=50/);
     assert.match(source,/const SPEED_STEP=0\.05/);
