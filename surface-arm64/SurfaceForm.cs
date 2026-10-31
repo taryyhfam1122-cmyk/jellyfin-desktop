@@ -43,7 +43,11 @@ public sealed class SurfaceForm : Form
         Controls.Add(_fullscreenBar);
         _server.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; _ = ConnectAsync(); } };
         KeyDown += (_, e) => { if (e.KeyCode == Keys.F11) { ToggleFullscreen(); e.Handled = true; } else if (e.KeyCode == Keys.Escape && _fullscreen) { ToggleFullscreen(); e.Handled = true; } };
-        Shown += async (_, _) => await InitializeAsync();
+        Shown += async (_, _) =>
+        {
+            if (!_fullscreen) ToggleFullscreen(); // Fullscreen is the default at startup.
+            await InitializeAsync();
+        };
     }
 
     private static Button Button(string caption, int width, Action action)
