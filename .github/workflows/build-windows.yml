@@ -18,6 +18,7 @@ on:
       - seek-fullscreen-preview-v02
       - fullscreen-home-close-v01
       - desktop-surface-gestures-v01
+      - desktop-home-fullscreen-tab-v01
 
 jobs:
   build:
@@ -133,7 +134,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-surface-v09-parity-validation
+        name: ${{ matrix.artifact }}-home-fullscreen-tab-validation
         path: build/portable-validation/
         if-no-files-found: ignore
     - name: Archive installer
@@ -144,6 +145,6 @@ jobs:
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-surface-v09-parity-portable
+        name: ${{ matrix.artifact }}-home-fullscreen-tab-portable
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.zip
         if-no-files-found: error
