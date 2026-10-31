@@ -80,11 +80,20 @@
         return promise;
     }
 
+    function formatTime(value) {
+        const total=Math.max(0,Math.floor(Number(value)||0));
+        const h=Math.floor(total/3600);
+        const m=Math.floor(total/60)%60;
+        const sec=String(total%60).padStart(2,'0');
+        return h ? h+':'+String(m).padStart(2,'0')+':'+sec : m+':'+sec;
+    }
+
     function show(seconds,duration) {
         create();
         const sprite = getSprite(seconds,duration);
         if (!sprite) { status('trickplay-unavailable'); return false; }
-        label.textContent = Math.floor(seconds/60)+':'+String(Math.floor(seconds%60)).padStart(2,'0');
+        // Keep both the target and total video length visible over trickplay.
+        label.textContent = 'シーク先 '+formatTime(seconds)+' / 全体 '+formatTime(duration);
         const key = sprite.url+'#'+sprite.x+','+sprite.y;
         if (lastFrame===key && root.style.display==='flex') return true;
         const current=++generation;
