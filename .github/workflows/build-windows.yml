@@ -49,7 +49,7 @@ jobs:
     - uses: actions/setup-node@v4
       with:
         node-version: '22'
-    - name: Validate mouse controls
+    - name: Validate mouse controls and home fullscreen tab
       run: |
         node --check native/nativeshell.js
         node --check native/mpvVideoPlayer.js
