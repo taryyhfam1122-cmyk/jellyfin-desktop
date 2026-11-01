@@ -20,6 +20,7 @@ on:
       - desktop-surface-gestures-v01
       - desktop-home-fullscreen-tab-v01
       - desktop-home-dblclick-v02
+      - searchhub-desktop-v15
 
 jobs:
   build:
