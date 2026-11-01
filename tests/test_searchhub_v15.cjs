@@ -30,3 +30,10 @@ test('Launcher is created without an API-client prerequisite', () => {
   assert.match(code, /DOMContentLoaded',attachButton/);
   assert.match(code, /window\.alert\('検索一覧のデータ取得機能/);
 });
+
+test('Search launcher is centered under Home/Favorites and independent of Injector load order', () => {
+  assert.match(code, /BEGIN CHATGPT_SEARCHHUB_CENTER_LAUNCH_V16/);
+  assert.match(code, /jfsh-launch-center-v16/);
+  assert.match(code, /top:88px!important;left:50%!important;right:auto!important;transform:translateX\(-50%\)!important/);
+  assert.match(code, /#jfsh-launch \{position:fixed;top:88px;left:50%;right:auto;transform:translateX\(-50%\);/);
+});
