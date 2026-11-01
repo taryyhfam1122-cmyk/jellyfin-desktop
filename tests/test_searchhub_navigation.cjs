@@ -43,9 +43,9 @@ test('v18 back navigation restores page, query and exact scroll position', () =>
     detailGenres: '', restoreScrollTop: null};
   const overlay = {scrollTop: 682};
   let draws = 0;
-  const navigation = new Function('state','document','draw',
+  const navigation = new Function('state','document','draw','ID',
     source.slice(start, end) + '; return {rememberParentList, backToParentList};')(
-    state, {getElementById: () => overlay}, () => {draws++;});
+    state, {getElementById: () => overlay}, () => {draws++;}, 'jfsh-v1');
   navigation.rememberParentList();
   assert.equal(state.parentPage, 7);
   assert.equal(state.parentQuery, '田中');
