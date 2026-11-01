@@ -15,7 +15,7 @@ test('Desktop build includes SearchHub v1.5', () => {
 
 test('The UI retains the requested 50-person photo pages', () => {
   assert.match(code, /const PERSON_PAGE_SIZE = 50;/);
-  assert.match(code, /jfsh-person/);
+  assert.match(code, /jfsh-people/);
 });
 
 test('Read-only cached index and library-scoped results are present', () => {
