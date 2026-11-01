@@ -205,8 +205,11 @@
                 v.isConnected && getComputedStyle(v).visibility !== 'hidden';
         }) || null;
     }
+    function inSearchHub(target) {
+        return Boolean(target?.closest?.('#jfsh-v1'));
+    }
     function avoidUi(target) {
-        return !!target?.closest?.('button,a,input,textarea,select,[role="slider"],.videoOsdBottom,.sliderContainer,.chapterThumbContainer,.headerTop,.videoOsd-appBar');
+        return inSearchHub(target) || !!target?.closest?.('button,a,input,textarea,select,[role="slider"],.videoOsdBottom,.sliderContainer,.chapterThumbContainer,.headerTop,.videoOsd-appBar');
     }
     function inVideoArea(e, v) {
         const r = v.getBoundingClientRect();
@@ -265,6 +268,9 @@
         window.__jfdTrickplayPreview?.prefetch(v.currentTime,v.duration);
     }
     window.addEventListener('pointerdown', e => {
+        // SearchHub owns its own touch scrolling and back gesture, even if a
+        // Jellyfin video element is still mounted behind the search overlay.
+        if (inSearchHub(e.target)) return;
         if (e.pointerType !== 'touch' || touchStream) return;
         if (blockedPointers.size) {
             blockedPointers.add(e.pointerId);
@@ -381,6 +387,7 @@
         report('touch-start');
     }
     window.addEventListener('touchstart', e => {
+        if (inSearchHub(e.target)) return;
         const v=video();
         if (!v) return;
         if (touchBlocked) {
@@ -485,7 +492,7 @@
     // Never intercept a single tap, scrolling, navigation controls or playback.
     let homeStart=null, homeLastTap=null, homeLastEvent=null;
     function isHomeGestureTarget(target) {
-        return !video() && !avoidUi(target) &&
+        return !inSearchHub(target) && !video() && !avoidUi(target) &&
             !target?.closest?.('a,button,input,textarea,select,[role="button"],[role="link"],.card,.cardBox,.itemAction');
     }
     function homeTap(x,y,target) {
