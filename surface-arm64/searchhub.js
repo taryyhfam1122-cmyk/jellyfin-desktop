@@ -5,6 +5,21 @@
 (() => {
   'use strict';
   if (location.origin !== "__JFD_SERVER_ORIGIN__") return;
+// BEGIN CHATGPT_SEARCHHUB_CENTER_LAUNCH_V16
+// Independent of the SearchHub global guard: the server's Injector may load first.
+(() => {
+  const apply = () => {
+    if (!document.head || document.getElementById('jfsh-launch-center-v16')) return;
+    const style = document.createElement('style');
+    style.id = 'jfsh-launch-center-v16';
+    style.textContent = '#jfsh-launch {top:88px!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;}';
+    document.head.appendChild(style);
+  };
+  apply();
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', apply, {once:true});
+})();
+// END CHATGPT_SEARCHHUB_CENTER_LAUNCH_V16
 // BEGIN CHATGPT_JELLYFIN_SEARCHHUB_V15
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
 // Read-only cast / series / genre panel. The shared global guard avoids
@@ -496,7 +511,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if(document.getElementById(STYLE_ID))return;
     const s=document.createElement('style');s.id=STYLE_ID;
     s.textContent=`
-    #jfsh-launch {position:fixed;top:78px;right:18px;z-index:4100;border:1px solid #3b526b;background:#172b47;color:#fff;border-radius:24px;padding:11px 18px;font-size:14px;font-weight:700;box-shadow:0 6px 24px #0008;cursor:pointer}
+    #jfsh-launch {position:fixed;top:88px;left:50%;right:auto;transform:translateX(-50%);z-index:4100;border:1px solid #3b526b;background:#172b47;color:#fff;border-radius:24px;padding:11px 18px;font-size:14px;font-weight:700;box-shadow:0 6px 24px #0008;cursor:pointer}
     #jfsh-launch:hover{background:#234e77}#${ID}{position:fixed;inset:0;z-index:990000;background:#0b111bed;color:#eef4ff;overflow:auto;overscroll-behavior:contain;font:14px/1.5 system-ui,sans-serif}
     #${ID} * {box-sizing:border-box}#${ID} button,#${ID} select,#${ID} input{font:inherit}#${ID} .jfsh-shell{width:100%;max-width:2000px;margin:auto;padding:24px 16px 90px}
     #${ID} .jfsh-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}#${ID} h2{font-size:24px;margin:0;font-weight:750;flex:1}
