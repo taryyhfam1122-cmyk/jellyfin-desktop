@@ -146,3 +146,70 @@ test('v20 retains SearchHub after WebView history swipes and native Back action'
   assert.match(native,/window\.__jfdSurfaceSearchHub\?\.handleBack\?\.\(\)/);
   assert.match(native,/if \(handled == "true"\) return;/);
 });
+
+test('v21 hides both floating SearchHub buttons while video is actually visible', () => {
+  const marker='// BEGIN JFD_SURFACE_PLAYBACK_UI_V21';
+  const endMarker='// END JFD_SURFACE_PLAYBACK_UI_V21';
+  const start=source.indexOf(marker);
+  const end=source.indexOf(endMarker,start);
+  const guard=source.indexOf('if (window.__JellyfinSearchHubV1) return;');
+  assert.ok(start>-1 && end>start && end<guard,
+    'playback suppression must run even when a server Injector loads the SearchHub first');
+  const script=source.slice(start,end);
+  assert.match(script, /#jfsh-launch/);
+  assert.match(script, /#jfsh-return-to-cast/);
+  assert.match(script, /display:none!important;visibility:hidden!important;pointer-events:none!important/);
+  assert.match(script, /setInterval\(sync,400\)/);
+
+  const flags=new Set(),styles=[];
+  let media=[];
+  const doc={
+    readyState:'complete',
+    head:{appendChild(node){styles.push(node);}},
+    body:{classList:{
+      contains(name){return flags.has(name);},
+      toggle(name,on){if(on)flags.add(name);else flags.delete(name);}
+    }},
+    createElement(){return {id:'',textContent:''};},
+    getElementById(id){return styles.find(x=>x.id===id)||null;},
+    querySelectorAll(selector){
+      if(selector.includes('video')) return media;
+      return [];
+    },
+    addEventListener(){}
+  };
+  const win={location:{hash:'#/home'},addEventListener(){},
+    __JellyfinSearchHubV1:true}; // Mimics server Injector taking precedence.
+  const controller=new Function('document','window','getComputedStyle','setInterval',
+    script+';return window.__jfdSurfacePlaybackUI;')(
+    doc,win,()=>({visibility:'visible',display:'block'}),()=>1
+  );
+  const CLASS='jfd-surface-playback-active';
+  assert.equal(flags.has(CLASS),false);
+  media=[{isConnected:true,readyState:4,duration:600,
+    getBoundingClientRect(){return {width:1200,height:680};}}];
+  controller.sync();
+  assert.equal(flags.has(CLASS),true,'video overlay is detected even on #/home');
+  assert.equal(styles.length,1);
+  controller.sync();
+  assert.equal(styles.length,1,'suppression CSS is installed only once');
+  media=[];
+  controller.sync();
+  assert.equal(flags.has(CLASS),false,'buttons can reappear after playback');
+  win.__jfdSurfacePlayerActive=()=>true;
+  controller.sync();
+  assert.equal(flags.has(CLASS),true,'Surface gesture player signal takes priority');
+});
+test('v21 native toolbar Home buttons navigate directly and clear search context',()=>{
+  const native=readFileSync(join(__dirname,'../SurfaceForm.cs'),'utf8');
+  assert.match(native,/var home = Button\("ホーム", 74, NavigateHomeDirect\)/);
+  assert.match(native,/var fullHome = Button\("ホーム", 90, NavigateHomeDirect\)/);
+  const start=native.indexOf('private void NavigateHomeDirect()');
+  const end=native.indexOf('private async Task StopAndHomeAsync()',start);
+  assert.ok(start>0 && end>start);
+  const handler=native.slice(start,end);
+  assert.match(handler,/core\.Navigate\(new Uri\(_serverUri, "\/web\/#\/home"\)\.ToString\(\)\)/);
+  assert.doesNotMatch(handler,/Task\.Delay|await/, 'Home click must not wait on SPA playback cleanup');
+  assert.match(native,/private async Task StopAndReturnToSearchAsync\(\)/,
+    'search-initiated double-tap playback still restores the works list');
+});
