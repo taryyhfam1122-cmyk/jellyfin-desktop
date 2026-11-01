@@ -17,5 +17,6 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <None Update="controls.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="trickplay-preview.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="searchhub.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
