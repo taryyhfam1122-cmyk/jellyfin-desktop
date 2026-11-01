@@ -213,3 +213,79 @@ test('v21 native toolbar Home buttons navigate directly and clear search context
   assert.match(native,/private async Task StopAndReturnToSearchAsync\(\)/,
     'search-initiated double-tap playback still restores the works list');
 });
+
+
+test('v22 closing SearchHub immediately restores the launcher and keeps it usable',()=>{
+  const start=source.indexOf('// BEGIN JFD_SURFACE_LAUNCHER_RECOVERY_V22');
+  const end=source.indexOf('// END JFD_SURFACE_LAUNCHER_RECOVERY_V22',start);
+  assert.ok(start>0 && end>start);
+  const nodes=new Map();
+  const appended=[];
+  let playing=false, authed=true, syncs=0;
+  const api={getCurrentUserId:()=>authed?'abc':'',getUrl:()=>'',fetch:()=>{}};
+  const doc={
+    readyState:'complete',fullscreenElement:null,
+    body:{appendChild(node){nodes.set(node.id,node);appended.push(node);}},
+    head:{appendChild(node){nodes.set(node.id,node);appended.push(node);}},
+    getElementById(id){return nodes.get(id)||null;},
+    createElement(tag){
+      return {tag,id:'',type:'',textContent:'',title:'',
+        style:{display:'',properties:{},
+          setProperty(k,v,p){this.properties[k]={value:v,priority:p};}}};
+    },
+    addEventListener(){},documentElement:{style:{overflow:'hidden'}}
+  };
+  const win={
+    ApiClient:api,__JellyfinSearchHubV1:true,
+    __jfdSurfacePlaybackUI:{isPlaying:()=>playing,sync(){syncs++;}},
+    addEventListener(){}
+  };
+  const helper=new Function('window','document','setInterval',
+    source.slice(start,end)+'; return window.__jfdSurfaceLauncher;')(
+      win,doc,()=>1);
+  const launch=()=>nodes.get('jfsh-launch');
+  assert.ok(launch(), 'launcher is created even if server Injector owns SearchHub');
+  assert.equal(launch().style.display,'');
+  assert.deepEqual(launch().style.properties.top,{value:'180px',priority:'important'});
+  // While searching the button stays hidden behind the dialog.
+  nodes.set('jfsh-v1',{remove(){nodes.delete('jfsh-v1');}});
+  helper.repair();
+  assert.equal(launch().style.display,'none');
+  // Reproduce an external injector removing its own launcher on close.
+  nodes.delete('jfsh-launch');
+  nodes.delete('jfsh-v1');
+  assert.equal(helper.repair(),true);
+  assert.ok(launch());
+  assert.equal(launch().style.display,'');
+  assert.equal(nodes.get('jfd-surface-launcher-v22').tag,'style');
+  playing=true;helper.repair();
+  assert.equal(launch().style.display,'none','playing video still suppresses tab');
+  playing=false;helper.repair();
+  assert.equal(launch().style.display,'');
+  authed=false;helper.repair();
+  assert.equal(launch().style.display,'none','logout must not expose search');
+  authed=true;helper.repair();
+  assert.equal(launch().style.display,'');
+  assert.equal(syncs,0);
+});
+test('v22 SearchHub close action invokes launcher recovery immediately',()=>{
+  const start=source.indexOf('  function close() {');
+  const end=source.indexOf('  // Restore the exact actress/series result set',start);
+  assert.ok(start>0 && end>start);
+  const state={opened:true,epoch:3,previousOverflow:'auto',
+    detail:{type:'person'},detailItems:[{}],query:'hello',page:4};
+  let repaired=0,synced=0,removed=0;
+  const overlay={remove(){removed++;}};
+  const doc={getElementById:()=>overlay,documentElement:{style:{overflow:'hidden'}}};
+  const win={__jfdSurfacePlaybackUI:{sync(){synced++;}},
+    __jfdSurfaceLauncher:{repair(){repaired++;}}};
+  const close=new Function('state','document','window','ID',
+    source.slice(start,end)+';return close;')(state,doc,win,'jfsh-v1');
+  close();
+  assert.equal(state.opened,false);
+  assert.equal(state.detail,null);
+  assert.equal(removed,1);
+  assert.equal(synced,1);
+  assert.equal(repaired,1);
+  assert.equal(doc.documentElement.style.overflow,'auto');
+});
