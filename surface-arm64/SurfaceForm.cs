@@ -26,7 +26,7 @@ public sealed class SurfaceForm : Form
         Font = new Font("Segoe UI", 10);
         KeyPreview = true;
 
-        var back = Button("←", 48, () => { if (_browser.CanGoBack) _browser.GoBack(); });
+        var back = Button("←", 48, () => _ = BackPreservingSearchAsync());
         var home = Button("ホーム", 74, () => _ = StopAndHomeAsync());
         var connect = Button("接続", 66, () => _ = ConnectAsync());
         var refresh = Button("更新", 65, () => _browser.Reload());
@@ -75,6 +75,23 @@ public sealed class SurfaceForm : Form
         _fullscreenBar.Visible = _fullscreen;
         FormBorderStyle = _fullscreen ? FormBorderStyle.None : FormBorderStyle.Sizable;
         WindowState = FormWindowState.Maximized;
+    }
+
+    private async Task BackPreservingSearchAsync()
+    {
+        var core = _browser.CoreWebView2;
+        if (core is null) return;
+        try
+        {
+            var handled = await core.ExecuteScriptAsync(
+                "Boolean(window.__jfdSurfaceSearchHub?.handleBack?.())");
+            if (handled == "true") return;
+        }
+        catch (Exception ex)
+        {
+            Log("SearchHub back unavailable: " + ex.GetType().Name);
+        }
+        if (_browser.CanGoBack) _browser.GoBack();
     }
 
     private async Task StopAndReturnToSearchAsync()
