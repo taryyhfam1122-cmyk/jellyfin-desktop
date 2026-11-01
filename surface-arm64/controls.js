@@ -208,6 +208,9 @@
     function inSearchHub(target) {
         return Boolean(target?.closest?.('#jfsh-v1'));
     }
+    // Export the same player-visibility decision used by touch gestures.
+    // A boolean only; no playback metadata or credentials leave the page.
+    window.__jfdSurfacePlayerActive = () => Boolean(video());
     function avoidUi(target) {
         return inSearchHub(target) || !!target?.closest?.('button,a,input,textarea,select,[role="slider"],.videoOsdBottom,.sliderContainer,.chapterThumbContainer,.headerTop,.videoOsd-appBar');
     }
