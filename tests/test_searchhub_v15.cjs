@@ -23,3 +23,10 @@ test('Read-only cached index and library-scoped results are present', () => {
   assert.match(code, /loadTab\(\)/);
   assert.match(code, /library/i);
 });
+
+// The embedded client may expose ApiClient only after the shell is loaded.
+test('Launcher is created without an API-client prerequisite', () => {
+  assert.match(code, /function attachButton\(\)\s*\{[\s\S]*?if \(!document\.body \|\| !document\.head\) return;/);
+  assert.match(code, /DOMContentLoaded',attachButton/);
+  assert.match(code, /window\.alert\('検索一覧のデータ取得機能/);
+});
