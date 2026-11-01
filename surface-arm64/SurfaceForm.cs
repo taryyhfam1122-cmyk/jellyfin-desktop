@@ -199,7 +199,10 @@ public sealed class SurfaceForm : Form
             File.WriteAllText(Path.Combine(_appData, "server.txt"), _server.Text);
             if (_scriptId is not null) _browser.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(_scriptId);
             var preview = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "trickplay-preview.js"));
-            var source = preview + "\n" + await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "controls.js"));
+            var searchHub = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "searchhub.js"));
+            var source = preview + "
+" + await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "controls.js")) + "
+" + searchHub;
             source = source.Replace("\"__JFD_SERVER_ORIGIN__\"", JsonSerializer.Serialize(_server.Text), StringComparison.Ordinal);
             _scriptId = await _browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(source);
             _browser.CoreWebView2.Navigate(new Uri(server, "/web/").ToString());
