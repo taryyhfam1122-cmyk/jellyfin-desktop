@@ -613,7 +613,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         tab.type = 'button';
         tab.setAttribute('aria-label', '全画面・通常表示を切り替える');
         tab.title = '全画面と通常表示を切り替える';
-        tab.style.cssText = 'position:fixed;top:12px;right:68px;min-width:122px;height:44px;'
+        tab.style.cssText = 'position:fixed;top:96px;right:68px;min-width:122px;height:44px;'
             + 'z-index:2147483646;display:none;padding:0 14px;'
             + 'border:1px solid #777;border-radius:8px;background:rgba(24,24,28,.91);'
             + 'color:#fff;font:600 15px/1 system-ui,sans-serif;cursor:pointer;'
@@ -641,7 +641,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         button.textContent = '\u00d7';
         button.title = 'Jellyfin Desktopを終了';
         button.setAttribute('aria-label', 'Jellyfin Desktopを終了');
-        button.style.cssText = 'position:fixed;top:12px;right:12px;width:44px;height:44px;'
+        button.style.cssText = 'position:fixed;top:96px;right:12px;width:44px;height:44px;'
             + 'z-index:2147483646;display:none;align-items:center;justify-content:center;'
             + 'border:1px solid #666;border-radius:8px;background:rgba(24,24,28,.87);'
             + 'color:#fff;font:normal 30px/1 Arial,sans-serif;cursor:pointer;'
@@ -1260,6 +1260,26 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             if (ctx.player.paused()) ctx.player.unpause();
             else ctx.player.pause();
         }, 300);
+    }, true);
+    // Desktop mouse parity: double click in the upper 25% toggles native
+    // fullscreen; double click elsewhere in the video stops playback and
+    // navigates home through Jellyfin's playback manager.
+    window.addEventListener('dblclick', e => {
+        if (e.button !== 0 || e.sourceCapabilities?.firesTouchEvents) return;
+        const ctx=getContext();
+        if(ctx.error) return;
+        const node=e.target?.nodeType===1?e.target:null;
+        if(!node || node.closest('button,a,input,textarea,select,[role="button"],[role="slider"],.sliderContainer,.mdl-slider,.videoOsdBottom'))return;
+        clearTimeout(singleClickTimer);
+        e.preventDefault();e.stopImmediatePropagation();
+        if(e.clientY<window.innerHeight*.25) {
+            if(window.api?.input?.executeActions)
+                window.api.input.executeActions(['host:fullscreen']);
+            else ctx.player.toggleFullscreen?.();
+        } else {
+            stopPlayback();
+            window.location.hash='#/home';
+        }
     }, true);
     window.addEventListener('auxclick', e => {
         if (performance.now() < suppressAuxUntil || (!getContext().error && !eligibleArea(e))) { e.preventDefault(); e.stopImmediatePropagation(); }
