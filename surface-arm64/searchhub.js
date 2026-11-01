@@ -20,6 +20,54 @@
     document.addEventListener('DOMContentLoaded', apply, {once:true});
 })();
 // END CHATGPT_SEARCHHUB_CENTER_LAUNCH_V16
+// BEGIN JFD_SURFACE_PLAYBACK_UI_V21
+// Also applies when the server's JavaScript Injector registers SearchHub first.
+(() => {
+  const STYLE='jfd-surface-playback-ui-v21';
+  const ACTIVE='jfd-surface-playback-active';
+  function visible(el) {
+    if (!el || !el.isConnected) return false;
+    const r=el.getBoundingClientRect();
+    if (!r || r.width<120 || r.height<90) return false;
+    const css=getComputedStyle(el);
+    return css.visibility!=='hidden' && css.display!=='none';
+  }
+  function isPlaying() {
+    try { if (window.__jfdSurfacePlayerActive?.() === true) return true; }
+    catch (_) {}
+    if (/\/(?:video|player)(?:[/?]|$)/i.test(window.location.hash)) return true;
+    // Jellyfin may render a player overlay without changing the #/home route.
+    if ([...document.querySelectorAll('.videoPlayerContainer video,video')].some(v =>
+      visible(v) && (v.readyState>0 || (Number.isFinite(v.duration) && v.duration>0)))) return true;
+    return [...document.querySelectorAll('#videoOsdPage,.videoOsdPage,.videoPlayerContainer')].some(visible);
+  }
+  function ensureStyle() {
+    if (!document.head || document.getElementById(STYLE)) return;
+    const style=document.createElement('style');
+    style.id=STYLE;
+    style.textContent='body.'+ACTIVE+' #jfsh-launch,body.'+ACTIVE+' #jfsh-return-to-cast {'+
+      'display:none!important;visibility:hidden!important;pointer-events:none!important;}';
+    document.head.appendChild(style);
+  }
+  function sync() {
+    ensureStyle();
+    if (!document.body) return;
+    const active=isPlaying();
+    if (document.body.classList.contains(ACTIVE)!==active)
+      document.body.classList.toggle(ACTIVE,active);
+  }
+  window.__jfdSurfacePlaybackUI=Object.freeze({isPlaying,sync});
+  sync();
+  if (document.readyState==='loading')
+    document.addEventListener('DOMContentLoaded',sync,{once:true});
+  window.addEventListener('hashchange',sync);
+  document.addEventListener('playing',sync,true);
+  document.addEventListener('loadedmetadata',sync,true);
+  document.addEventListener('emptied',sync,true);
+  document.addEventListener('ended',sync,true);
+  setInterval(sync,400);
+})();
+// END JFD_SURFACE_PLAYBACK_UI_V21
 // BEGIN CHATGPT_JELLYFIN_SEARCHHUB_V15
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
 // Read-only cast / series / genre panel. The shared global guard avoids
@@ -670,6 +718,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     try { window.api?.window?.setCursorVisibility?.(true); } catch (_) {}
   }
   function playbackVisible() {
+    if (window.__jfdSurfacePlaybackUI?.isPlaying?.() === true) return true;
     if (/\/(?:video|player)(?:[/?]|$)/i.test(window.location.hash)) return true;
     if ([...document.querySelectorAll('.videoPlayerContainer')].some(el =>
       !el.classList.contains('hide') && el.getClientRects().length > 0 &&
