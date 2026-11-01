@@ -60,6 +60,7 @@ jobs:
         node --test tests/test_fullscreen_trickplay.cjs
         node --test tests/test_preview_v02.cjs
         node --test tests/test_fullscreen_home_close.cjs
+        node --test tests/test_searchhub_v15.cjs
     - name: Install Qt 6
       uses: jurplel/install-qt-action@v4
       with:
