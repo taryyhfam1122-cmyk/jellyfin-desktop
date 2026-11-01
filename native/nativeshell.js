@@ -1731,9 +1731,9 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     const genres=[...new Set(items.flatMap(x=>x.Genres||[]))].sort((a,b)=>a.localeCompare(b,'ja'));
     return `<div class="jfsh-detailhead"><button class="jfsh-back" data-act="back">← 一覧へ</button><strong>${e(title)}</strong><span>${filtered.length}作品</span></div>
       <div class="jfsh-filters"><select id="jfsh-genres"><option value="">全ジャンル</option>${genres.map(x=>`<option value="${e(x)}" ${x===state.detailGenres?'selected':''}>${e(x)}</option>`).join('')}</select></div>
-      <div class="jfsh-grid jfsh-posters">${show.map(x=>`<button class="jfsh-tile" data-act="item" data-id="${e(x.Id)}">
+      <div class="jfsh-grid jfsh-posters">${show.map(x=>`<div class="jfsh-work"><button type="button" class="jfsh-tile" data-act="item" data-id="${e(x.Id)}" aria-label="作品の詳細を表示">
           <div class="jfsh-art">${image(x)?`<img loading="lazy" src="${e(image(x))}" alt="">`:'<span class="jfsh-empty">▶</span>'}</div>
-          <div class="jfsh-name">${e(x.Name || '作品名なし')}</div></button>`).join('')}</div>
+          <div class="jfsh-name">${e(x.Name || '作品名なし')}</div></button><button class="jfsh-play" type="button" data-act="play" data-id="${e(x.Id)}" aria-label="${e(x.Name || '作品名なし')}を再生" title="再生">▶</button></div>`).join('')}</div>
       ${show.length<filtered.length?`<button class="jfsh-more" data-act="more">もっと表示 (${filtered.length-show.length}件)</button>`:''}
       ${!filtered.length?'<p class="jfsh-hint">条件に合う作品がありません。</p>':''}`;
   }
@@ -1816,7 +1816,9 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     #${ID} .jfsh-tile{display:block;min-width:0;border:0;background:#19263a;color:#fff;border-radius:11px;overflow:hidden;cursor:pointer;text-align:left;padding:0}
     #${ID} .jfsh-tile:hover{outline:2px solid #35afe7;transform:translateY(-2px)}#${ID} .jfsh-art{background:#2b374b;aspect-ratio:3/4;display:flex;justify-content:center;align-items:center;overflow:hidden}
     #${ID} .jfsh-art img{height:100%;width:100%;object-fit:cover}#${ID} .jfsh-empty{font-size:40px;color:#869bb2}
-    #${ID} .jfsh-posters{grid-template-columns:repeat(auto-fill,minmax(165px,1fr))}#${ID} .jfsh-posters .jfsh-art{aspect-ratio:2/3}
+    #${ID} .jfsh-work{position:relative;min-width:0}#${ID} .jfsh-work .jfsh-tile{width:100%;height:100%}
+    #${ID} .jfsh-play{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);width:64px;height:64px;display:flex;align-items:center;justify-content:center;border-radius:50%;border:2px solid #fff9;background:#102b44ce;color:white;cursor:pointer;font-size:28px;z-index:2;box-shadow:0 3px 15px #000a}
+    #${ID} .jfsh-play:hover,#${ID} .jfsh-play:focus-visible{background:#0077b8;outline:3px solid #51c2ff}#${ID} .jfsh-posters{grid-template-columns:repeat(auto-fill,minmax(165px,1fr))}#${ID} .jfsh-posters .jfsh-art{aspect-ratio:2/3}
     #${ID} .jfsh-name{padding:9px 10px 12px;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
     #${ID} .jfsh-catgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
     #${ID} .jfsh-category{display:flex;gap:10px;align-items:center;min-width:0;padding:20px 16px;cursor:pointer;border-radius:12px;background:#1c2f49;border:1px solid #354964;color:#eaf5ff;text-align:left}
@@ -1872,6 +1874,102 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     state.opened=false;state.epoch++;document.getElementById(ID)?.remove();
     document.documentElement.style.overflow=state.previousOverflow || '';state.detail=null;state.detailItems=[];state.query='';state.page=1;
   }
+
+  // Restore the exact actress/series result set after opening details or playing a movie.
+  let lastSelection = null;
+  let playPoll = null;
+  function restoreNativePointer() {
+    try { window.api?.window?.setCursorVisibility?.(true); } catch (_) {}
+  }
+  function playbackVisible() {
+    if (/\/(?:video|player)(?:[/?]|$)/i.test(window.location.hash)) return true;
+    return [...document.querySelectorAll('.videoPlayerContainer')].some(el =>
+      !el.classList.contains('hide') && el.getClientRects().length > 0 &&
+      getComputedStyle(el).visibility !== 'hidden');
+  }
+  function updateReturnButton() {
+    let b = document.getElementById('jfsh-return-to-cast');
+    if (!lastSelection || state.opened || !document.body) {
+      b?.remove(); return;
+    }
+    if (!b) {
+      b=document.createElement('button');
+      b.id='jfsh-return-to-cast';
+      b.type='button';
+      b.textContent='← 女優・作品一覧に戻る';
+      b.title='直前の女優・シリーズ・ジャンルの作品一覧へ戻ります';
+      b.setAttribute('aria-label','直前の作品一覧に戻る');
+      b.style.cssText='position:fixed;top:86px;left:16px;z-index:2147483645;min-height:42px;'
+        +'padding:7px 14px;border:1px solid #4f81a6;border-radius:9px;'
+        +'background:rgba(16,41,65,.96);color:#fff;font:600 14px system-ui,sans-serif;'
+        +'cursor:pointer;box-shadow:0 4px 12px #0007;';
+      b.addEventListener('click',event=>{
+        event.preventDefault();event.stopPropagation();returnToResults();
+      });
+      document.body.appendChild(b);
+    }
+    b.style.display=playbackVisible()?'none':'block';
+  }
+  function returnToResults() {
+    const saved=lastSelection;
+    if (!saved) return;
+    const api=currentApi();
+    if (!api || api.getCurrentUserId()!==saved.userId) {
+      lastSelection=null;updateReturnButton();return;
+    }
+    lastSelection=null;
+    if (playPoll) {clearTimeout(playPoll);playPoll=null;}
+    updateReturnButton();
+    const desiredHash=saved.originHash || '#/home';
+    if(window.location.hash !== desiredHash) window.location.hash=desiredHash;
+    restoreNativePointer();
+    // Reopen from the in-memory, library-scoped index; never rescan the library.
+    setTimeout(()=>{
+      state.scope=saved.scope;state.tab=saved.tab;
+      state.query=saved.query;state.page=saved.page;
+      state.personMode=saved.personMode;state.personLetter=saved.personLetter;
+      state.parentPage=saved.parentPage;
+      state.detail=saved.detail;state.detailItems=saved.detailItems;
+      state.detailGenres=saved.detailGenres;
+      open();
+    },180);
+  }
+  function tryStartNativePlayback(id, attempt=0) {
+    if (!lastSelection || lastSelection.itemId!==id || !lastSelection.autoPlay) return;
+    if (playbackVisible()) {lastSelection.autoPlay=false;return;}
+    if (window.location.hash.includes('id='+encodeURIComponent(id))) {
+      const visible=[...document.querySelectorAll('.page')].reverse().find(el=>
+        !el.classList.contains('hide') && el.getClientRects().length > 0 &&
+        getComputedStyle(el).visibility!=='hidden');
+      const target=visible || document;
+      const play=target.querySelector('.btnPlay, button[data-action="resume"], button[data-action="play"]');
+      if (play && play.getClientRects().length > 0 && !play.disabled) {
+        lastSelection.autoPlay=false;
+        play.click(); // Jellyfin's normal detail-page playback / resume action.
+        return;
+      }
+    }
+    if (attempt<50) playPoll=setTimeout(()=>tryStartNativePlayback(id,attempt+1),180);
+    else {
+      lastSelection.autoPlay=false; // Safe fallback: user stays on normal details page.
+      updateReturnButton();
+    }
+  }
+  function navigateToItem(id, autoPlay) {
+    if(!/^[0-9a-f-]{16,64}$/i.test(id) || !state.detail) return;
+    lastSelection={
+      itemId:id, autoPlay:Boolean(autoPlay), userId:state.userId,
+      originHash:window.location.hash,scope:state.scope,tab:state.tab,
+      detail:state.detail,detailItems:state.detailItems,
+      detailGenres:state.detailGenres,page:state.page,parentPage:state.parentPage||1,
+      query:state.query,personMode:state.personMode,personLetter:state.personLetter
+    };
+    if (playPoll) {clearTimeout(playPoll);playPoll=null;}
+    close();restoreNativePointer();
+    window.location.hash='/details?id='+encodeURIComponent(id);
+    updateReturnButton();
+    if(autoPlay) playPoll=setTimeout(()=>tryStartNativePlayback(id),260);
+  }
   async function loadTab(force=false) {
     if(!state.opened)return;
     if(state.tab==='persons') await loadPersons(force); else await loadMovies(force);
@@ -1879,6 +1977,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   }
   function openPerson(key) {
     const p=state.persons.find(x=>x.Key===key);if(!p)return;
+    state.parentPage=state.page;
     state.detail={type:'person',name:p.Name,id:key};state.page=1;state.query='';state.detailGenres='';
     // The same scoped videos that built the person list define the cast works.
     // This avoids accidentally leaking content from unrelated libraries.
@@ -1887,6 +1986,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   }
   function openCategory(name) {
     const item=categories().find(x=>x.name===name);if(!item)return;
+    state.parentPage=state.page;
     state.detail={type:state.tab,name:item.name};state.detailItems=item.items;
     state.page=1;state.query='';state.detailGenres='';draw();
   }
@@ -1912,18 +2012,15 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     }
     else if(action==='person-mode'){state.personMode=btn.dataset.value;state.personLetter='all';state.page=1;draw();}
     else if(action==='person-letter'){state.personLetter=btn.dataset.value;state.page=1;draw();}
-    else if(action==='back'){state.detail=null;state.detailItems=[];state.detailGenres='';state.query='';state.page=1;draw();}
+    else if(action==='back'){state.detail=null;state.detailItems=[];state.detailGenres='';state.query='';state.page=state.parentPage||1;draw();}
     else if(action==='person')openPerson(btn.dataset.id);
     else if(action==='category')openCategory(btn.dataset.key);
     else if(action==='refresh'){
       state.fetchedMoviesKey='';state.fetchedPersonsKey='';state.brokenPhotos.clear();state.page=1;state.detail=null;
       state.detailItems=[];void loadTab(true);
     }
-    else if(action==='item') {
-      const id=btn.dataset.id;
-      if(!/^[0-9a-f-]{16,64}$/i.test(id))return;
-      close();window.location.hash=`/details?id=${encodeURIComponent(id)}`;
-    }
+    else if(action==='item') navigateToItem(btn.dataset.id,false);
+    else if(action==='play') navigateToItem(btn.dataset.id,true);
   });
   // The server may have a stale image tag or an unavailable image resource.
   // Hide failed photo tiles immediately; don't replace them with blank silhouettes.
@@ -1960,8 +2057,9 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if(evt.target.id==='jfsh-genres'){state.detailGenres=evt.target.value;state.page=1;draw();}
   });
   document.addEventListener('keydown',evt=>{if(evt.key==='Escape'&&state.opened)close();});
-  window.addEventListener('hashchange',()=>{if(state.opened)close();});
+  window.addEventListener('hashchange',()=>{if(state.opened)close();restoreNativePointer();updateReturnButton();});
   function attachButton() {
+    updateReturnButton();
     if(!currentApi()){
       document.getElementById('jfsh-launch')?.remove();
       if(state.opened)close();return;
