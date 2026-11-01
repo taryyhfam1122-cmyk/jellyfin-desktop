@@ -486,3 +486,35 @@ test('SearchHub return context does not override upper fullscreen double-tap',()
     assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,1);
     assert.equal(h.messages.filter(m=>m.action==='stop-search-results').length,0);
 });
+
+
+test('SearchHub overlay touch and pointer swipes bypass the video controls even with video mounted behind',()=>{
+    const h=harness();
+    const target={closest:selector=>selector.includes('#jfsh-v1')?{id:'jfsh-v1'}:null};
+    const down=h.dispatch('pointerdown',{target,pointerId:12,clientX:400,clientY:350});
+    const tstart=h.dispatch('touchstart',{target,
+        changedTouches:[h.point(12,400)],touches:[h.point(12,400)]});
+    const tmove=h.dispatch('touchmove',{target,
+        changedTouches:[h.point(12,400,150)],touches:[h.point(12,400,150)]});
+    const tend=h.dispatch('touchend',{target,
+        changedTouches:[h.point(12,400,150)],touches:[]});
+    assert.equal(down.defaultPrevented,false);
+    assert.equal(tstart.defaultPrevented,false);
+    assert.equal(tmove.defaultPrevented,false);
+    assert.equal(tend.defaultPrevented,false);
+    assert.equal(h.activeTimers(),0);
+    assert.deepEqual(h.seeks,[]);
+    assert.equal(h.pauses(),0);
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,0);
+});
+test('SearchHub gesture targets cannot be interpreted as home fullscreen double-taps',()=>{
+    const h=harness();
+    h.disableVideo();
+    const target={closest:selector=>selector.includes('#jfsh-v1')?{id:'jfsh-v1'}:null};
+    for(let i=0;i<2;i++){
+        h.dispatch('pointerdown',{target,clientX:500,clientY:350});
+        h.dispatch('pointerup',{target,clientX:500,clientY:350});
+        h.advance(100);
+    }
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
+});
