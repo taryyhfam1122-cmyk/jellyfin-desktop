@@ -19,6 +19,7 @@ on:
       - fullscreen-home-close-v01
       - desktop-surface-gestures-v01
       - desktop-home-fullscreen-tab-v01
+      - desktop-home-dblclick-v02
 
 jobs:
   build:
@@ -134,7 +135,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-home-fullscreen-tab-validation
+        name: ${{ matrix.artifact }}-home-dblclick-v02-validation
         path: build/portable-validation/
         if-no-files-found: ignore
     - name: Archive installer
@@ -145,6 +146,6 @@ jobs:
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-home-fullscreen-tab-portable
+        name: ${{ matrix.artifact }}-home-dblclick-v02-portable
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.zip
         if-no-files-found: error
