@@ -1662,7 +1662,8 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     fetchedPersonsKey: '', fetchedMoviesKey: '',
     detail: null, detailItems: [], detailGenres: '', page: 1,
     loading: false, message: '', error: '', epoch: 0, opened: false,
-    personMode: 'all', personLetter: 'all', brokenPhotos: new Set()
+    personMode: 'all', personLetter: 'all', brokenPhotos: new Set(),
+    parentScrollTop: 0, parentQuery: '', restoreScrollTop: null
   };
   const e = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
     '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
@@ -2184,6 +2185,16 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
        ${state.error?`<div class="jfsh-error">${e(state.error)}</div>`:''}
        <div class="jfsh-result">${state.loading?'<p class="jfsh-hint">読み込み中…</p>':mainList()}</div>
       </div>`;
+    // Apply saved scroll only after the list has finished loading.
+    if (!state.loading && state.restoreScrollTop !== null) {
+      const top = Math.max(0, Number(state.restoreScrollTop) || 0);
+      state.restoreScrollTop = null;
+      root.scrollTop = top;
+      const detail = state.detail;
+      requestAnimationFrame(() => {
+        if (document.getElementById(ID) === root && state.detail === detail) root.scrollTop = top;
+      });
+    }
   }
   function open() {
     if(state.opened)return;
@@ -2265,6 +2276,9 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       state.query=saved.query;state.page=saved.page;
       state.personMode=saved.personMode;state.personLetter=saved.personLetter;
       state.parentPage=saved.parentPage;
+      state.parentQuery=saved.parentQuery;
+      state.parentScrollTop=saved.parentScrollTop;
+      state.restoreScrollTop=saved.detailScrollTop;
       state.detail=saved.detail;state.detailItems=saved.detailItems;
       state.detailGenres=saved.detailGenres;
       open();
@@ -2298,7 +2312,9 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       originHash:window.location.hash,scope:state.scope,tab:state.tab,
       detail:state.detail,detailItems:state.detailItems,
       detailGenres:state.detailGenres,page:state.page,parentPage:state.parentPage||1,
-      query:state.query,personMode:state.personMode,personLetter:state.personLetter
+      query:state.query,personMode:state.personMode,personLetter:state.personLetter,
+      parentQuery:state.parentQuery,parentScrollTop:state.parentScrollTop,
+      detailScrollTop:document.getElementById(ID)?.scrollTop || 0
     };
     if (playPoll) {clearTimeout(playPoll);playPoll=null;}
     close();restoreNativePointer();
@@ -2311,9 +2327,21 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if(state.tab==='persons') await loadPersons(force); else await loadMovies(force);
     if(state.opened)draw();
   }
+  function rememberParentList() {
+    state.parentPage = state.page;
+    state.parentQuery = state.query;
+    state.parentScrollTop = document.getElementById(ID)?.scrollTop || 0;
+  }
+  function backToParentList() {
+    state.detail=null;state.detailItems=[];state.detailGenres='';
+    state.query=state.parentQuery || '';
+    state.page=state.parentPage || 1;
+    state.restoreScrollTop=state.parentScrollTop || 0;
+    draw();
+  }
   function openPerson(key) {
     const p=state.persons.find(x=>x.Key===key);if(!p)return;
-    state.parentPage=state.page;
+    rememberParentList();
     state.detail={type:'person',name:p.Name,id:key};state.page=1;state.query='';state.detailGenres='';
     // The same scoped videos that built the person list define the cast works.
     // This avoids accidentally leaking content from unrelated libraries.
@@ -2322,7 +2350,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   }
   function openCategory(name) {
     const item=categories().find(x=>x.name===name);if(!item)return;
-    state.parentPage=state.page;
+    rememberParentList();
     state.detail={type:state.tab,name:item.name};state.detailItems=item.items;
     state.page=1;state.query='';state.detailGenres='';draw();
   }
@@ -2348,7 +2376,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     }
     else if(action==='person-mode'){state.personMode=btn.dataset.value;state.personLetter='all';state.page=1;draw();}
     else if(action==='person-letter'){state.personLetter=btn.dataset.value;state.page=1;draw();}
-    else if(action==='back'){state.detail=null;state.detailItems=[];state.detailGenres='';state.query='';state.page=state.parentPage||1;draw();}
+    else if(action==='back') backToParentList();
     else if(action==='person')openPerson(btn.dataset.id);
     else if(action==='category')openCategory(btn.dataset.key);
     else if(action==='refresh'){
