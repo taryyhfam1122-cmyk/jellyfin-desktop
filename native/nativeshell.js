@@ -2142,7 +2142,8 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   }
   function open() {
     if(state.opened)return;
-    state.api=currentApi();if(!state.api || !document.body)return;
+    state.api=currentApi();if(!document.body)return;
+    if(!state.api){window.alert('検索一覧のデータ取得機能が準備できていません。Jellyfinにログイン後、ホーム画面で「更新」を押して再試行してください。');return;}
     const activeUser=state.api.getCurrentUserId();
     if(state.userId && state.userId!==activeUser){state.libraries=[];state.fetchedMoviesKey='';state.fetchedPersonsKey='';}
     state.userId=activeUser;state.opened=true;
@@ -2254,10 +2255,8 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   document.addEventListener('keydown',evt=>{if(evt.key==='Escape'&&state.opened)close();});
   window.addEventListener('hashchange',()=>{if(state.opened)close();});
   function attachButton() {
-    if(!currentApi()){
-      document.getElementById('jfsh-launch')?.remove();
-      if(state.opened)close();return;
-    }
+    // Keep the launcher discoverable in embedded WebEngine clients even when
+    // the web application's ApiClient is exposed after initial document creation.
     if (!document.body || !document.head) return;
     const existing=document.getElementById('jfsh-launch');
     if(existing){existing.style.display=(document.fullscreenElement || /\/video(?:[/?]|$)|\/player(?:[/?]|$)/i.test(window.location.hash)) ? 'none' : '';return;}
@@ -2266,6 +2265,8 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     document.body.appendChild(b);
   }
   attachButton();
+  document.addEventListener('DOMContentLoaded',attachButton,{once:true});
+  window.addEventListener('load',attachButton,{once:true});
   // SPA login transitions: lightweight periodic check. Never patch fetch, Jellyfin routing, or application files.
   const timer=setInterval(attachButton,2500);
   window.addEventListener('pagehide',()=>clearInterval(timer),{once:true});
