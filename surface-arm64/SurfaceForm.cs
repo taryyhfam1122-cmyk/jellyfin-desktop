@@ -77,6 +77,34 @@ public sealed class SurfaceForm : Form
         WindowState = FormWindowState.Maximized;
     }
 
+    private async Task StopAndReturnToSearchAsync()
+    {
+        var core = _browser.CoreWebView2;
+        if (core is null || _serverUri is null) return;
+        try
+        {
+            // Only a SearchHub-launched playback may override double-tap Home.
+            var pending = await core.ExecuteScriptAsync(
+                "Boolean(window.__jfdSurfaceSearchHub?.hasPendingReturn?.())");
+            if (pending == "true")
+            {
+                // SPA navigation stops Jellyfin's current playback session.
+                // A full WebView reload would destroy the in-memory search context.
+                await core.ExecuteScriptAsync("window.location.hash = '#/home';");
+                await Task.Delay(300);
+                var restored = await core.ExecuteScriptAsync(
+                    "Boolean(window.__jfdSurfaceSearchHub?.returnToResults?.())");
+                if (restored == "true") return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("SearchHub return unavailable: " + ex.GetType().Name);
+        }
+        // A normal player, lost web context, or failed restore retains Home.
+        await StopAndHomeAsync();
+    }
+
     private async Task StopAndHomeAsync()
     {
         var core = _browser.CoreWebView2;
@@ -142,6 +170,8 @@ public sealed class SurfaceForm : Form
                             var command = action.GetString();
                             if (command == "stop-home")
                                 _ = StopAndHomeAsync();
+                            else if (command == "stop-search-results")
+                                _ = StopAndReturnToSearchAsync();
                             else if (command == "toggle-fullscreen")
                                 ToggleFullscreen();
                         }
@@ -153,7 +183,7 @@ public sealed class SurfaceForm : Form
                     if (name is "script-loaded" or "gesture-start" or "touch-start" or
                         "seek-preview" or "seek-committed" or "seek-error" or
                         "pointer-cancel" or "trickplay-displayed" or "trickplay-unavailable" or
-                        "trickplay-error" or "double-tap-home" or "top-double-fullscreen" or
+                        "trickplay-error" or "double-tap-home" or "double-tap-search-return" or "top-double-fullscreen" or
                         "speed-changed" or "speed-error")
                         Log("Touch status: " + name);
                 }
