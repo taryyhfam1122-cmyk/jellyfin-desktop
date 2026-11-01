@@ -45,6 +45,7 @@ jobs:
           node --test surface-arm64/tests/touch-runtime.test.cjs
           node --test surface-arm64/tests/preview-runtime.test.cjs
           node --test surface-arm64/tests/searchhub-position.test.cjs
+          node --test surface-arm64/tests/searchhub-navigation.test.cjs
       - name: Restore and publish native win-arm64
         run: |
           dotnet --info
