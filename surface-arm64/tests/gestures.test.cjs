@@ -61,7 +61,8 @@ test('top 25 percent double tap toggles fullscreen; the rest stops playback',()=
     assert.match(source,/if\(upper\)toggleFullscreen\(\)/);
     assert.match(source,/else closeVideoHome\(g\.v\)/);
     assert.match(source,/action:'toggle-fullscreen'/);
-    assert.match(source,/action:'stop-home'/);
+    assert.match(source,/fromSearchHub \? 'stop-search-results' : 'stop-home'/);
+    assert.match(source,/__jfdSurfaceSearchHub\?\.hasPendingReturn/);
     assert.doesNotMatch(source,/triple-tap-home|pending\.count===3/);
 });
 test('left edge speed handler uses 0.5x steps without changing horizontal seek math',()=>{
