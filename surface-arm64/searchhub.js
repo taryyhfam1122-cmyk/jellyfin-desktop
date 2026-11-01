@@ -513,7 +513,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     const s=document.createElement('style');s.id=STYLE_ID;
     s.textContent=`
     #jfsh-launch {position:fixed;top:88px;left:50%;right:auto;transform:translateX(-50%);z-index:4100;border:1px solid #3b526b;background:#172b47;color:#fff;border-radius:24px;padding:11px 18px;font-size:14px;font-weight:700;box-shadow:0 6px 24px #0008;cursor:pointer}
-    #jfsh-launch:hover{background:#234e77}#${ID}{position:fixed;inset:0;z-index:990000;background:#0b111bed;color:#eef4ff;overflow:auto;overscroll-behavior:contain;font:14px/1.5 system-ui,sans-serif}
+    #jfsh-launch:hover{background:#234e77}#${ID}{position:fixed;inset:0;z-index:990000;background:#0b111bed;color:#eef4ff;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;font:14px/1.5 system-ui,sans-serif}
     #${ID} * {box-sizing:border-box}#${ID} button,#${ID} select,#${ID} input{font:inherit}#${ID} .jfsh-shell{width:100%;max-width:2000px;margin:auto;padding:24px 16px 90px}
     #${ID} .jfsh-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}#${ID} h2{font-size:24px;margin:0;font-weight:750;flex:1}
     #${ID} .jfsh-close,#${ID} .jfsh-reload{padding:8px 15px;border-radius:9px;background:#26354c;color:white;border:1px solid #536078;cursor:pointer}
@@ -599,11 +599,64 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
      'touchstart','touchmove','touchend','dblclick','wheel'].forEach(type => {
       root.addEventListener(type, event => event.stopPropagation(), {passive:true});
     });
+    installSearchSwipe(root);
     state.previousOverflow=document.documentElement.style.overflow;
     document.documentElement.style.overflow='hidden';
     state.message='ライブラリ情報を確認中…';state.loading=true;draw();
     (async()=>{try{await loadLibraries();state.loading=false;state.message=''; await loadTab();}
       catch(ex){state.loading=false;state.error='接続に失敗しました: '+ex.message;draw();}})();
+  }
+  // Horizontal back swipes are SearchHub navigation, not WebView history.
+  // Vertical movement remains browser-native scrolling; do not prevent it.
+  function handleSearchBack() {
+    if (!state.opened) return false;
+    if (state.detail) backToParentList();
+    return true; // The search overlay stays open even on its top-level list.
+  }
+  function installSearchSwipe(root) {
+    let touchStart=null, pointerStart=null, lastHandledAt=-Infinity;
+    const ignored = target => Boolean(target?.closest?.(
+      'input,textarea,select,[role="slider"],.jfsh-letter-tabs,.jfsh-initialmode'));
+    const backGesture = (start, x, y) => {
+      if (!start) return;
+      const dx=x-start.x, dy=y-start.y;
+      if (dx < 75 || Math.abs(dx) <= Math.abs(dy)*1.4) return;
+      const now=Date.now();
+      if (now-lastHandledAt < 500) return; // Pointer + Touch may both fire.
+      lastHandledAt=now;
+      handleSearchBack();
+    };
+    root.addEventListener('touchstart', evt => {
+      if (evt.touches.length!==1 || ignored(evt.target)) {touchStart=null;return;}
+      const t=evt.touches[0];
+      touchStart={id:t.identifier,x:t.clientX,y:t.clientY};
+    },{passive:true});
+    root.addEventListener('touchmove', evt => {
+      if (!touchStart || evt.touches.length!==1) return;
+      const t=evt.touches[0];
+      if (t.identifier!==touchStart.id) return;
+      const dx=t.clientX-touchStart.x, dy=t.clientY-touchStart.y;
+      if (dx>24 && Math.abs(dx)>Math.abs(dy)*1.4)
+        evt.preventDefault(); // Block WebView back navigation, never vertical scroll.
+    },{passive:false});
+    root.addEventListener('touchend', evt => {
+      if (!touchStart) return;
+      const t=[...evt.changedTouches].find(t=>t.identifier===touchStart.id);
+      if (t) backGesture(touchStart,t.clientX,t.clientY);
+      touchStart=null;
+    },{passive:true});
+    root.addEventListener('touchcancel',()=>{touchStart=null;},{passive:true});
+    root.addEventListener('pointerdown', evt => {
+      if (evt.pointerType==='touch' && !ignored(evt.target))
+        pointerStart={id:evt.pointerId,x:evt.clientX,y:evt.clientY};
+      else pointerStart=null;
+    },{passive:true});
+    root.addEventListener('pointerup',evt=>{
+      if (pointerStart && evt.pointerId===pointerStart.id)
+        backGesture(pointerStart,evt.clientX,evt.clientY);
+      pointerStart=null;
+    },{passive:true});
+    root.addEventListener('pointercancel',()=>{pointerStart=null;},{passive:true});
   }
   function close() {
     state.opened=false;state.epoch++;document.getElementById(ID)?.remove();
@@ -817,7 +870,14 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if(evt.target.id==='jfsh-genres'){state.detailGenres=evt.target.value;state.page=1;draw();}
   });
   document.addEventListener('keydown',evt=>{if(evt.key==='Escape'&&state.opened)close();});
-  window.addEventListener('hashchange',()=>{if(state.opened)close();restoreNativePointer();updateReturnButton();});
+  window.addEventListener('hashchange',()=>{
+    // A browser/trackpad back swipe must not destroy the SearchHub overlay.
+    if(state.opened) {
+      handleSearchBack();
+      return;
+    }
+    restoreNativePointer();updateReturnButton();
+  });
   // Small origin-restricted bridge for the native stop action. No media,
   // tokens, or library information crosses to the native process.
   window.__jfdSurfaceSearchHub = Object.freeze({
@@ -825,7 +885,8 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       const api=currentApi();
       return Boolean(lastSelection && api && lastSelection.userId===api.getCurrentUserId());
     },
-    returnToResults() { return returnToResults(); }
+    returnToResults() { return returnToResults(); },
+    handleBack() { return handleSearchBack(); }
   });
   function attachButton() {
     updateReturnButton();
