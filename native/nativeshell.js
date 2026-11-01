@@ -1589,6 +1589,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
 // END CHATGPT_JFD_MOUSECONTROLS_V05
 
 // BEGIN CHATGPT_JELLYFIN_SEARCHHUB_V15
+if (typeof document !== 'undefined' && typeof window !== 'undefined') {
 // Read-only cast / series / genre panel. The shared global guard avoids
 // duplicate registration when the server-side JavaScript Injector is active.
 /* Jellyfin Search Hub v1.5.0 (fast cache + parallel paging) — 10.11.x / JavaScript Injector (private script)
@@ -2269,4 +2270,5 @@ window.jmpInfo.settingsUpdate.push(function(section) {
   const timer=setInterval(attachButton,2500);
   window.addEventListener('pagehide',()=>clearInterval(timer),{once:true});
 })();
+}
 // END CHATGPT_JELLYFIN_SEARCHHUB_V15
