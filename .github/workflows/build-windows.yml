@@ -16,6 +16,7 @@ on:
       - touch-controls-v01
       - seek-fullscreen-preview-v01
       - seek-fullscreen-preview-v02
+      - searchhub-surface-v15
 
 jobs:
   build:
