@@ -64,9 +64,9 @@ jobs:
           'PASS: ARM64 executable and native runtime; WebView2 initialization requires Surface test.' | Set-Content publish/validation.txt
       - name: Create Portable ZIP
         run: |
-          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-SearchHub-v15.zip
+          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-SearchHub-v17-navigation.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: jellyfin-surface-arm64-searchhub-v15
-          path: JellyfinSurface-ARM64-SearchHub-v15.zip
+          name: jellyfin-surface-arm64-searchhub-v17-navigation
+          path: JellyfinSurface-ARM64-SearchHub-v17-navigation.zip
           if-no-files-found: error
