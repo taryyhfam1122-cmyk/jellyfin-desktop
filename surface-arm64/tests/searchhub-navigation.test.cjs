@@ -101,3 +101,48 @@ test('v19 native player action routes SearchHub playback to saved works', () => 
   assert.match(source, /hasPendingReturn\(\)/);
   assert.match(source, /returnToResults\(\) \{ return returnToResults\(\); \}/);
 });
+
+
+test('v20 Surface SearchHub supports vertical touch scrolling and safe horizontal back gestures',()=>{
+  assert.match(source,/overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y/);
+  assert.match(source,/function installSearchSwipe\(root\)/);
+  assert.match(source,/installSearchSwipe\(root\);/);
+  assert.match(source,/root\.addEventListener\('touchmove',[\s\S]*?\{passive:false\}/);
+  const start=source.indexOf('  function handleSearchBack() {');
+  const end=source.indexOf('  function close() {',start);
+  assert.ok(start>0 && end>start);
+  const state={opened:true,detail:{type:'person',name:'test'}};
+  let backCount=0, events=new Map();
+  const root={addEventListener(name,fn){events.set(name,fn);}};
+  const funcs=new Function('state','backToParentList',
+    source.slice(start,end)+'; return {installSearchSwipe,handleSearchBack};')(
+    state,()=>{backCount++;state.detail=null;});
+  funcs.installSearchSwipe(root);
+  const touch=(x,y)=>({identifier:1,clientX:x,clientY:y});
+  const target={closest:()=>null};
+  const startTouch=(x,y)=>events.get('touchstart')({touches:[touch(x,y)],target});
+  const moveTouch=(x,y)=>{let blocked=false;events.get('touchmove')({
+    touches:[touch(x,y)],preventDefault(){blocked=true;}});return blocked;};
+  const endTouch=(x,y)=>events.get('touchend')({changedTouches:[touch(x,y)]});
+  startTouch(100,500);
+  assert.equal(moveTouch(102,290),false,'vertical scrolling is not cancelled');
+  endTouch(102,290);
+  assert.equal(backCount,0,'vertical scroll never navigates back');
+  startTouch(100,500);
+  assert.equal(moveTouch(200,490),true,'rightward swipe prevents native history action');
+  endTouch(200,490);
+  assert.equal(backCount,1,'swiping right returns to the actress list');
+  assert.equal(state.opened,true,'search overlay must remain mounted');
+  // Already in top-level actress list: back gesture is consumed, never closes.
+  assert.equal(funcs.handleSearchBack(),true);
+  assert.equal(backCount,1);
+  assert.equal(state.opened,true);
+});
+test('v20 retains SearchHub after WebView history swipes and native Back action',()=>{
+  assert.match(source,/window\.addEventListener\('hashchange',[\s\S]*?if\(state\.opened\)\s*\{\s*handleSearchBack\(\);\s*return;/);
+  assert.match(source,/handleBack\(\) \{ return handleSearchBack\(\); \}/);
+  const native=readFileSync(join(__dirname,'../SurfaceForm.cs'),'utf8');
+  assert.match(native,/Button\("←", 48, \(\) => _ = BackPreservingSearchAsync\(\)\)/);
+  assert.match(native,/window\.__jfdSurfaceSearchHub\?\.handleBack\?\.\(\)/);
+  assert.match(native,/if \(handled == "true"\) return;/);
+});
