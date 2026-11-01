@@ -168,3 +168,14 @@ test('top tab is hidden while video is active but returns after home navigation'
     assert.equal(tab.style.display,'block');
     assert.equal(tab.textContent,'▣ 通常表示');
 });
+
+test('overlay sits below the Jellyfin search and account toolbar',()=>{
+    assert.match(implementation,/top:96px;right:68px/);
+    assert.match(implementation,/top:96px;right:12px/);
+});
+test('desktop video double click uses native fullscreen at top and stop-home below',()=>{
+    assert.match(source,/addEventListener\('dblclick', e =>/);
+    assert.match(source,/e\.clientY<window\.innerHeight\*\.25/);
+    assert.match(source,/window\.api\.input\.executeActions\(\['host:fullscreen'\]\)/);
+    assert.match(source,/stopPlayback\(\);\s*window\.location\.hash='#\/home'/);
+});
