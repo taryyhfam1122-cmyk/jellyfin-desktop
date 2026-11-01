@@ -68,3 +68,36 @@ test('v18 restores scroll after results render and after returning from item det
   assert.match(source, /parentScrollTop:state\.parentScrollTop/);
   assert.match(source, /detailScrollTop:document\.getElementById\(ID\)\?\.scrollTop/);
 });
+
+
+test('v19 launch button hides on active player even when route is not #/video', () => {
+  assert.match(source, /function playbackVisible\(\)/);
+  assert.match(source, /querySelectorAll\('video'\)/);
+  assert.match(source, /v\.readyState > 0/);
+  assert.match(source, /const hidden = Boolean\(document\.fullscreenElement\) \|\| playbackVisible\(\) \|\| state\.opened/);
+  assert.match(source, /b\.style\.display=hidden \? 'none' : ''/);
+  const start=source.indexOf('  function playbackVisible() {');
+  const end=source.indexOf('  function updateReturnButton()', start);
+  assert.ok(start>0 && end>start);
+  const visible = new Function('window','document','getComputedStyle',
+    source.slice(start,end)+'; return playbackVisible;')(
+    {location:{hash:'#/home'}},
+    {querySelectorAll: selector => selector==='video'
+      ? [{isConnected:true,readyState:4,getBoundingClientRect:()=>({width:800,height:450})}]
+      : []},
+    () => ({visibility:'visible'})
+  );
+  assert.equal(visible(),true);
+});
+test('v19 native player action routes SearchHub playback to saved works', () => {
+  const native=readFileSync(join(__dirname, '../SurfaceForm.cs'), 'utf8');
+  const controls=readFileSync(join(__dirname, '../controls.js'), 'utf8');
+  assert.match(native, /command == "stop-search-results"/);
+  assert.match(native, /StopAndReturnToSearchAsync\(\)/);
+  assert.match(native, /window\.location\.hash = '#\/home'/);
+  assert.match(native, /__jfdSurfaceSearchHub\?\.returnToResults\?\.\(\)/);
+  assert.match(controls, /const action = fromSearchHub \? 'stop-search-results' : 'stop-home'/);
+  assert.match(source, /window\.__jfdSurfaceSearchHub = Object\.freeze/);
+  assert.match(source, /hasPendingReturn\(\)/);
+  assert.match(source, /returnToResults\(\) \{ return returnToResults\(\); \}/);
+});
