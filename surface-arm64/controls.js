@@ -29,8 +29,11 @@
     }
     function closeVideoHome(v) {
         v.pause();
-        report('double-tap-home');
-        try {window.chrome?.webview?.postMessage({type:'jfd-player-action',action:'stop-home'});}
+        // SearchHub playback returns to its exact works list; normal playback keeps Home.
+        const fromSearchHub = window.__jfdSurfaceSearchHub?.hasPendingReturn?.() === true;
+        report(fromSearchHub ? 'double-tap-search-return' : 'double-tap-home');
+        const action = fromSearchHub ? 'stop-search-results' : 'stop-home';
+        try {window.chrome?.webview?.postMessage({type:'jfd-player-action',action});}
         catch (_) {}
     }
     function resolveSingleTap(entry) {
