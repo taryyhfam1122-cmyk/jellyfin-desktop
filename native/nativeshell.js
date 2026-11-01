@@ -298,16 +298,44 @@ window.initCompleted = new Promise(async (resolve) => {
         }
     );
 
-    // Sync cursor visibility with jellyfin-web's mouse idle state
+    // Keep the pointer visible on library/details screens. Only the video
+    // player's idle state may hide it; movement makes it visible again.
+    const viewingVideo = () => {
+        if (/\/(?:video|player)(?:[/?]|$)/i.test(window.location.hash)) return true;
+        return [...document.querySelectorAll('.videoPlayerContainer')].some(el =>
+            !el.classList.contains('hide') && el.getClientRects().length > 0 &&
+            getComputedStyle(el).visibility !== 'hidden');
+    };
+    const revealCursor = () => {
+        try { window.api.window.setCursorVisibility(true); } catch (_) {}
+    };
     const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            if (mutation.attributeName === 'class') {
-                const isIdle = document.body.classList.contains('mouseIdle');
-                window.api.window.setCursorVisibility(!isIdle);
-            }
+        if (mutations.some(mutation => mutation.attributeName === 'class')) {
+            const isIdle = document.body.classList.contains('mouseIdle');
+            window.api.window.setCursorVisibility(!isIdle || !viewingVideo());
         }
     });
     observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    let lastCursorReveal = 0;
+    window.addEventListener('pointermove', event => {
+        if (event.pointerType && event.pointerType !== 'mouse') return;
+        if (Date.now() - lastCursorReveal < 125) return;
+        lastCursorReveal = Date.now();
+        revealCursor();
+    }, true);
+    window.addEventListener('mousemove', event => {
+        if ('PointerEvent' in window) return;
+        if (Date.now() - lastCursorReveal < 125) return;
+        lastCursorReveal = Date.now();
+        revealCursor();
+    }, true);
+    window.addEventListener('hashchange', () => {
+        if (!viewingVideo()) {
+            document.body.classList.remove('mouseIdle');
+            revealCursor();
+        }
+    });
+    revealCursor();
 
     resolve();
 });
