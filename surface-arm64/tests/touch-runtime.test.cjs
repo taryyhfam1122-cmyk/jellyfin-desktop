@@ -8,7 +8,7 @@ const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'..','controls.js'),'utf8')
     .replace('"__JFD_SERVER_ORIGIN__"','"http://jellyfin.test:30013"');
 
-function harness(){
+function harness(options={}){
     const listeners=new Map(),seeks=[],messages=[],reports=[],intervals=new Map(),timeouts=new Map();
     let current=120, clock=1000, nextId=0, numberOfVideos=1, pauses=0;
     const video={
@@ -31,6 +31,7 @@ function harness(){
         querySelectorAll:()=>numberOfVideos?[video]:[],addEventListener(){}
     };
     const window={
+        __jfdSurfaceSearchHub: options.fromSearch ? {hasPendingReturn:()=>true} : undefined,
         chrome:{webview:{postMessage:m=>{messages.push(m);reports.push(m.event);}}},
         addEventListener:(name,fn)=>{
             if(!listeners.has(name))listeners.set(name,[]);
@@ -466,4 +467,22 @@ test('seek fallback overlay includes both target position and total runtime',()=
     move(h,400);
     assert.equal(h.overlayLabel(),'シーク先 3:00 / 全体 10:00');
     end(h,400);
+});
+
+
+test('SearchHub playback double-tap stops and requests the saved works list, not Home',()=>{
+    const h=harness({fromSearch:true});
+    start(h,500,350);end(h,500,350);h.advance(100);
+    start(h,500,350);end(h,500,350);
+    assert.equal(h.messages.filter(m=>m.action==='stop-search-results').length,1);
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,0);
+    assert.equal(h.video.paused,true);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
+});
+test('SearchHub return context does not override upper fullscreen double-tap',()=>{
+    const h=harness({fromSearch:true});
+    start(h,500,100);end(h,500,100);h.advance(100);
+    start(h,500,100);end(h,500,100);
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,1);
+    assert.equal(h.messages.filter(m=>m.action==='stop-search-results').length,0);
 });
