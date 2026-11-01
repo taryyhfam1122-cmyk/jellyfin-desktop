@@ -27,13 +27,13 @@ public sealed class SurfaceForm : Form
         KeyPreview = true;
 
         var back = Button("←", 48, () => _ = BackPreservingSearchAsync());
-        var home = Button("ホーム", 74, () => _ = StopAndHomeAsync());
+        var home = Button("ホーム", 74, NavigateHomeDirect);
         var connect = Button("接続", 66, () => _ = ConnectAsync());
         var refresh = Button("更新", 65, () => _browser.Reload());
         var full = Button("全画面", 82, ToggleFullscreen);
         var exit = Button("終了 ✕", 95, Close);
         var leaveFullscreen = Button("通常表示", 102, ToggleFullscreen);
-        var fullHome = Button("ホーム", 90, () => _ = StopAndHomeAsync());
+        var fullHome = Button("ホーム", 90, NavigateHomeDirect);
         var fullRefresh = Button("更新 ↻", 100, () => _browser.Reload());
         var fullExit = Button("アプリを終了 ✕", 148, Close);
 
@@ -120,6 +120,24 @@ public sealed class SurfaceForm : Form
         }
         // A normal player, lost web context, or failed restore retains Home.
         await StopAndHomeAsync();
+    }
+
+    // Native Home is an explicit request to leave playback and the SearchHub
+    // context. A full same-origin navigation also works when Jellyfin's SPA
+    // route is already #/home and playback is displayed as a modal overlay.
+    // Unlike the player double-tap, this must never restore a works list.
+    private void NavigateHomeDirect()
+    {
+        var core = _browser.CoreWebView2;
+        if (core is null || _serverUri is null) return;
+        try
+        {
+            core.Navigate(new Uri(_serverUri, "/web/#/home").ToString());
+        }
+        catch (Exception ex)
+        {
+            Log("Native Home navigation failed: " + ex.GetType().Name);
+        }
     }
 
     private async Task StopAndHomeAsync()
