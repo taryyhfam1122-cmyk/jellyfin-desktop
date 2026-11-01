@@ -1,4 +1,4 @@
-/* Jellyfin Surface ARM64: Search Hub v1.5
+/* Jellyfin Surface ARM64: Search Hub v19 return-to-results fix
  * Origin-restricted, read-only JavaScript taken from the Desktop v1.5 branch.
  * Does not touch playback, video seeking, account credentials, or media files.
  */
@@ -618,9 +618,16 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   }
   function playbackVisible() {
     if (/\/(?:video|player)(?:[/?]|$)/i.test(window.location.hash)) return true;
-    return [...document.querySelectorAll('.videoPlayerContainer')].some(el =>
+    if ([...document.querySelectorAll('.videoPlayerContainer')].some(el =>
       !el.classList.contains('hide') && el.getClientRects().length > 0 &&
-      getComputedStyle(el).visibility !== 'hidden');
+      getComputedStyle(el).visibility !== 'hidden')) return true;
+    // Jellyfin WebView2 playback can be an overlay without a #/video route.
+    // Use visible, initialized media to hide the launcher even when paused.
+    return [...document.querySelectorAll('video')].some(v => {
+      const r = v.getBoundingClientRect();
+      return v.isConnected && r.width > 100 && r.height > 100 &&
+        v.readyState > 0 && getComputedStyle(v).visibility !== 'hidden';
+    });
   }
   function updateReturnButton() {
     let b = document.getElementById('jfsh-return-to-cast');
@@ -647,10 +654,10 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   }
   function returnToResults() {
     const saved=lastSelection;
-    if (!saved) return;
+    if (!saved) return false;
     const api=currentApi();
     if (!api || api.getCurrentUserId()!==saved.userId) {
-      lastSelection=null;updateReturnButton();return;
+      lastSelection=null;updateReturnButton();return false;
     }
     lastSelection=null;
     if (playPoll) {clearTimeout(playPoll);playPoll=null;}
@@ -671,6 +678,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       state.detailGenres=saved.detailGenres;
       open();
     },180);
+    return true;
   }
   function tryStartNativePlayback(id, attempt=0) {
     if (!lastSelection || lastSelection.itemId!==id || !lastSelection.autoPlay) return;
@@ -810,6 +818,15 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   });
   document.addEventListener('keydown',evt=>{if(evt.key==='Escape'&&state.opened)close();});
   window.addEventListener('hashchange',()=>{if(state.opened)close();restoreNativePointer();updateReturnButton();});
+  // Small origin-restricted bridge for the native stop action. No media,
+  // tokens, or library information crosses to the native process.
+  window.__jfdSurfaceSearchHub = Object.freeze({
+    hasPendingReturn() {
+      const api=currentApi();
+      return Boolean(lastSelection && api && lastSelection.userId===api.getCurrentUserId());
+    },
+    returnToResults() { return returnToResults(); }
+  });
   function attachButton() {
     updateReturnButton();
     if(!currentApi()){
@@ -817,10 +834,12 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       if(state.opened)close();return;
     }
     if (!document.body || !document.head) return;
+    const hidden = Boolean(document.fullscreenElement) || playbackVisible() || state.opened;
     const existing=document.getElementById('jfsh-launch');
-    if(existing){existing.style.display=(document.fullscreenElement || /\/video(?:[/?]|$)|\/player(?:[/?]|$)/i.test(window.location.hash)) ? 'none' : '';return;}
+    if(existing){existing.style.display=hidden ? 'none' : '';return;}
     ensureStyle();const b=document.createElement('button');b.id='jfsh-launch';
     b.textContent='🔎 検索一覧';b.type='button';b.title='女優・シリーズ・ジャンル一覧';
+    b.style.display=hidden ? 'none' : '';
     document.body.appendChild(b);
   }
   attachButton();
