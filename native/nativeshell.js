@@ -2673,8 +2673,8 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       control.getAttribute?.('aria-label'),control.getAttribute?.('title'),
       control.textContent
     ].filter(Boolean).join(' ').trim();
-    return /(^|\\s)(headerBackButton|btnBack|backButton|navBack|btnBackButton)(\\s|$)/i.test(className) ||
-      /^(戻る|Back|Go back|←|‹)(\\s|$)/i.test(label) ||
+    return /(^|\s)(headerBackButton|btnBack|backButton|navBack|btnBackButton)(\s|$)/i.test(className) ||
+      /^(戻る|Back|Go back|←|‹)(\s|$)/i.test(label) ||
       control.dataset?.action === 'back';
   }
   document.addEventListener('click',event=>{
