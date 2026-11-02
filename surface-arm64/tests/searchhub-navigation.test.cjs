@@ -317,3 +317,25 @@ test('v24 native ARM64 search action always visible in both window modes',()=>{
   assert.match(native,/ExecuteScriptAsync\(script\)/);
   assert.match(source,/openSearch\(\) \{ open\(\); return state\.opened; \}/);
 });
+
+test('SearchHub detail Back recognizes mouse and accessible controls, never Home',()=>{
+  const start=source.indexOf('  function isSearchBackControl(node) {');
+  const end=source.indexOf("  document.addEventListener('click',event=>{",start);
+  assert.ok(start>0 && end>start, 'Back button matcher should be installed');
+  const back=new Function(source.slice(start,end)+';return isSearchBackControl;')();
+  const make=(text,aria='',cls='',insideReturn=false)=>{
+    const control={
+      className:cls, textContent:text, dataset:{},
+      getAttribute:key=>key==='aria-label'?aria:null,
+      closest:selector=>selector==='#jfsh-return-to-cast'&&insideReturn?{}:null
+    };
+    return {closest:selector=>selector==='button,a,[role="button"],.emby-button'?control:null};
+  };
+  assert.equal(back(make('','Back')),true);
+  assert.equal(back(make('戻る')),true);
+  assert.equal(back(make('←')),true);
+  assert.equal(back(make('','', 'headerBackButton')),true);
+  assert.equal(back(make('ホーム')),false);
+  assert.equal(back(make('← 女優・作品一覧に戻る','','',true)),false);
+  assert.equal(back({closest:()=>null}),false);
+});
