@@ -1814,6 +1814,48 @@ window.jmpInfo.settingsUpdate.push(function(section) {
   window.__jfdSearchBackCompatV33=Object.freeze({currentWorksBack,suppressAfterDetailReturn});
 })();
 // END JFD_SEARCHHUB_BACK_COMPAT_V33
+// BEGIN JFD_SEARCHHUB_UNIVERSAL_BACK_V35
+// Capture Jellyfin's page Back while SearchHub's works overlay is visible.
+// This bridge is outside the SearchHub global guard, so it also works when
+// the server's JavaScript Injector created the overlay first.
+(() => {
+  'use strict';
+  if(window.__jfdSearchUniversalBackV35) return;
+  let lastActionAt=-Infinity;
+  function worksBack() {
+    const root=document.getElementById('jfsh-v1');
+    if(!root || root.getClientRects().length===0) return null;
+    return root.querySelector('[data-act="back"]');
+  }
+  function isPageBack(target) {
+    const node=target?.closest?.('button,a,[role="button"],.emby-button');
+    if(!node || node.closest?.('#jfsh-v1')) return false;
+    const cls=typeof node.className==='string'?node.className:'';
+    const label=[node.getAttribute?.('aria-label'),node.getAttribute?.('title'),
+      node.textContent].filter(Boolean).join(' ').trim();
+    return /(^|\\s)(headerBackButton|btnBack|backButton|navBack|btnBackButton)(\\s|$)/i.test(cls)
+      || /^(戻る|Back|Go back|←|‹)(\\s|$)/i.test(label)
+      || node.dataset?.action==='back';
+  }
+  function goBack(event) {
+    const back=worksBack();
+    if(!back) return false;
+    event.preventDefault?.();
+    event.stopImmediatePropagation?.();
+    if(Date.now()-lastActionAt<250) return true;
+    lastActionAt=Date.now();
+    back.click();
+    return true;
+  }
+  document.addEventListener('click',event=>{
+    if(isPageBack(event.target) && worksBack()) goBack(event);
+  },true);
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape' && worksBack()) goBack(event);
+  },true);
+  window.__jfdSearchUniversalBackV35=Object.freeze({worksBack,isPageBack});
+})();
+// END JFD_SEARCHHUB_UNIVERSAL_BACK_V35
 // BEGIN JFD_SEARCHHUB_HISTORY_DIAGNOSTIC_V32
 // Runs independently of the main SearchHub global guard. A server-side
 // JavaScript Injector can load its own SearchHub first, making the desktop's
