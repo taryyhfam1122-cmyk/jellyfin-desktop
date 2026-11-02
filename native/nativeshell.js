@@ -2324,20 +2324,73 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     ensureStyle();const root=document.createElement('div');root.id=ID;
     root.setAttribute('role','dialog');root.setAttribute('aria-label','Jellyfin検索ハブ');root.setAttribute('aria-modal','true');
     document.body.appendChild(root);
-    // Prevent custom desktop/Surface seek and double-tap gestures on the overlay.
+    // Prevent native mouse/gesture seek from taking over the search overlay.
     ['pointerdown','pointermove','pointerup','mousedown','mousemove','mouseup',
      'touchstart','touchmove','touchend','dblclick','wheel'].forEach(type => {
       root.addEventListener(type, event => event.stopPropagation(), {passive:true});
     });
+    installSearchSwipe(root);
     state.previousOverflow=document.documentElement.style.overflow;
     document.documentElement.style.overflow='hidden';
     state.message='ライブラリ情報を確認中…';state.loading=true;draw();
     (async()=>{try{await loadLibraries();state.loading=false;state.message=''; await loadTab();}
       catch(ex){state.loading=false;state.error='接続に失敗しました: '+ex.message;draw();}})();
   }
+  function handleSearchBack() {
+    if (!state.opened) return false;
+    if (state.detail) backToParentList();
+    return true; // The search overlay stays open even on its top-level list.
+  }
+  function installSearchSwipe(root) {
+    let touchStart=null, pointerStart=null, lastHandledAt=-Infinity;
+    const ignored = target => Boolean(target?.closest?.(
+      'input,textarea,select,[role="slider"],.jfsh-letter-tabs,.jfsh-initialmode'));
+    const backGesture = (start, x, y) => {
+      if (!start) return;
+      const dx=x-start.x, dy=y-start.y;
+      if (dx < 75 || Math.abs(dx) <= Math.abs(dy)*1.4) return;
+      const now=Date.now();
+      if (now-lastHandledAt < 500) return; // Pointer + Touch may both fire.
+      lastHandledAt=now;
+      handleSearchBack();
+    };
+    root.addEventListener('touchstart', evt => {
+      if (evt.touches.length!==1 || ignored(evt.target)) {touchStart=null;return;}
+      const t=evt.touches[0];
+      touchStart={id:t.identifier,x:t.clientX,y:t.clientY};
+    },{passive:true});
+    root.addEventListener('touchmove', evt => {
+      if (!touchStart || evt.touches.length!==1) return;
+      const t=evt.touches[0];
+      if (t.identifier!==touchStart.id) return;
+      const dx=t.clientX-touchStart.x, dy=t.clientY-touchStart.y;
+      if (dx>24 && Math.abs(dx)>Math.abs(dy)*1.4)
+        evt.preventDefault(); // Block WebView back navigation, never vertical scroll.
+    },{passive:false});
+    root.addEventListener('touchend', evt => {
+      if (!touchStart) return;
+      const t=[...evt.changedTouches].find(t=>t.identifier===touchStart.id);
+      if (t) backGesture(touchStart,t.clientX,t.clientY);
+      touchStart=null;
+    },{passive:true});
+    root.addEventListener('touchcancel',()=>{touchStart=null;},{passive:true});
+    root.addEventListener('pointerdown', evt => {
+      if (evt.pointerType==='touch' && !ignored(evt.target))
+        pointerStart={id:evt.pointerId,x:evt.clientX,y:evt.clientY};
+      else pointerStart=null;
+    },{passive:true});
+    root.addEventListener('pointerup',evt=>{
+      if (pointerStart && evt.pointerId===pointerStart.id)
+        backGesture(pointerStart,evt.clientX,evt.clientY);
+      pointerStart=null;
+    },{passive:true});
+    root.addEventListener('pointercancel',()=>{pointerStart=null;},{passive:true});
+  }
   function close() {
     state.opened=false;state.epoch++;document.getElementById(ID)?.remove();
     document.documentElement.style.overflow=state.previousOverflow || '';state.detail=null;state.detailItems=[];state.query='';state.page=1;
+    window.__jfdDesktopPlaybackUI?.sync?.();
+    window.__jfdDesktopLauncher?.repair?.();
   }
 
   // Restore the exact actress/series result set after opening details or playing a movie.
@@ -2347,6 +2400,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     try { window.api?.window?.setCursorVisibility?.(true); } catch (_) {}
   }
   function playbackVisible() {
+    if (window.__jfdDesktopPlaybackUI?.isPlaying?.() === true) return true;
     if (/\/(?:video|player)(?:[/?]|$)/i.test(window.location.hash)) return true;
     return [...document.querySelectorAll('.videoPlayerContainer')].some(el =>
       !el.classList.contains('hide') && el.getClientRects().length > 0 &&
@@ -2377,10 +2431,10 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   }
   function returnToResults() {
     const saved=lastSelection;
-    if (!saved) return;
+    if (!saved) return false;
     const api=currentApi();
     if (!api || api.getCurrentUserId()!==saved.userId) {
-      lastSelection=null;updateReturnButton();return;
+      lastSelection=null;updateReturnButton();return false;
     }
     lastSelection=null;
     if (playPoll) {clearTimeout(playPoll);playPoll=null;}
@@ -2401,6 +2455,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       state.detailGenres=saved.detailGenres;
       open();
     },180);
+    return true;
   }
   function tryStartNativePlayback(id, attempt=0) {
     if (!lastSelection || lastSelection.itemId!==id || !lastSelection.autoPlay) return;
@@ -2539,16 +2594,33 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if(evt.target.id==='jfsh-genres'){state.detailGenres=evt.target.value;state.page=1;draw();}
   });
   document.addEventListener('keydown',evt=>{if(evt.key==='Escape'&&state.opened)close();});
-  window.addEventListener('hashchange',()=>{if(state.opened)close();restoreNativePointer();updateReturnButton();});
+  window.addEventListener('hashchange',()=>{
+    if (state.opened) {
+      // Do not close SearchHub on a trackpad/Windows browser-back gesture.
+      handleSearchBack();
+      return;
+    }
+    restoreNativePointer();updateReturnButton();
+  });
+  window.__jfdDesktopSearchHub=Object.freeze({
+    hasPendingReturn() {
+      const api=currentApi();
+      return Boolean(lastSelection && api && lastSelection.userId===api.getCurrentUserId());
+    },
+    returnToResults() { return returnToResults(); },
+    handleBack() { return handleSearchBack(); }
+  });
   function attachButton() {
     updateReturnButton();
     // Keep the launcher discoverable in embedded WebEngine clients even when
     // the web application's ApiClient is exposed after initial document creation.
     if (!document.body || !document.head) return;
+    const hidden=Boolean(document.fullscreenElement) || playbackVisible() || state.opened;
     const existing=document.getElementById('jfsh-launch');
-    if(existing){existing.style.display=(document.fullscreenElement || /\/video(?:[/?]|$)|\/player(?:[/?]|$)/i.test(window.location.hash)) ? 'none' : '';return;}
+    if(existing){existing.style.display=hidden?'none':'';return;}
     ensureStyle();const b=document.createElement('button');b.id='jfsh-launch';
     b.textContent='🔎 検索一覧';b.type='button';b.title='女優・シリーズ・ジャンル一覧';
+    b.style.display=hidden?'none':'';
     document.body.appendChild(b);
   }
   attachButton();
