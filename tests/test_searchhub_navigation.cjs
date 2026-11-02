@@ -219,3 +219,11 @@ test('v24 native back preserves actress list and playback stop completes before 
   assert.match(source,/return Promise\.resolve\(ctx\.manager\.stop\(ctx\.player\)\)/);
   assert.match(source,/void stopPlayback\(\)\.then\(\(\) => \{/);
 });
+
+test('v25 mouse thumb Back is captured before browser Home navigation',()=>{
+  assert.match(source,/event\.button !== 3 \|\| !state\.opened \|\| !state\.detail/);
+  assert.match(source,/window\.addEventListener\('pointerdown',handleMouseThumbBack,true\)/);
+  assert.match(source,/window\.addEventListener\('mousedown',handleMouseThumbBack,true\)/);
+  assert.match(source,/window\.addEventListener\('auxclick',handleMouseThumbBack,true\)/);
+  assert.match(source,/event\.stopImmediatePropagation\(\)/);
+});
