@@ -1412,14 +1412,72 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         hideFramePreview();
         if(clearTap) cancelPendingTap();
     }
+    // Most playback stops are reported normally by Jellyfin's playbackManager.
+    // Only when the server still has no resumable position do we make one
+    // official, authenticated fallback stop report. Never invent play time,
+    // call deprecated PlayingItems endpoints, or overwrite a completed video.
+    const historyAudits = new Set();
+    async function verifySearchPlaybackStop(itemId, positionMs, durationMs, options) {
+        if (!/^[0-9a-f-]{16,64}$/i.test(itemId || '')) return;
+        if (!Number.isFinite(positionMs) || !Number.isFinite(durationMs) ||
+            durationMs <= 0 || positionMs < 120000 ||
+            positionMs < durationMs * .05 || positionMs > durationMs * .90) return;
+        const api=window.ApiClient;
+        if (!api || typeof api.getCurrentUserId!=='function' ||
+            typeof api.getUrl!=='function' || typeof api.fetch!=='function') return;
+        const userId=api.getCurrentUserId();
+        if (!userId || historyAudits.has(itemId)) return;
+        historyAudits.add(itemId);
+        try {
+            // Give the regular playback manager time to finish its own report.
+            await new Promise(resolve=>setTimeout(resolve,1500));
+            const url=api.getUrl('Users/'+encodeURIComponent(userId)+'/Items/'+encodeURIComponent(itemId));
+            const result=await api.fetch({url,type:'GET',dataType:'json'});
+            const item=typeof result==='string' ? JSON.parse(result) : result;
+            const saved=Number(item?.UserData?.PlaybackPositionTicks || 0);
+            const desiredTicks=Math.round(positionMs*10000);
+            if (item?.UserData?.Played === true ||
+                (Number.isFinite(saved) && saved>0 &&
+                 Math.abs(saved-desiredTicks)<150000000)) {
+                log('SearchHub resume: saved by Jellyfin');
+                return;
+            }
+            // A missing/stale position may mean the normal session stop was
+            // lost on the fast native stop->SearchHub navigation path.
+            const mediaId=options?.mediaSource?.Id;
+            const payload={ItemId:itemId,PositionTicks:desiredTicks};
+            if (typeof mediaId==='string' && mediaId) payload.MediaSourceId=mediaId;
+            if (typeof options?.playSessionId==='string' && options.playSessionId)
+                payload.PlaySessionId=options.playSessionId;
+            await api.fetch({
+                url:api.getUrl('Sessions/Playing/Stopped'),
+                type:'POST',contentType:'application/json',
+                data:JSON.stringify(payload)
+            });
+            log('SearchHub resume: fallback stop report accepted');
+        } catch (error) {
+            log('SearchHub resume verification failed', {error:String(error).slice(0,100)});
+        } finally {
+            historyAudits.delete(itemId);
+        }
+    }
     function stopPlayback() {
         const ctx = getContext();
         if(ctx.error || !ctx.manager?.stop) return Promise.resolve(false);
         cancelTouch(); resetDrag(); clearTimeout(singleClickTimer);
+        // Capture a real current position before the player clears it.
+        // SearchHub is the only playback path eligible for the fallback.
+        const itemId=window.__jfdDesktopSearchHub?.pendingPlaybackItemId?.();
+        const positionMs=Number(ctx.player.currentTime?.());
+        const durationMs=Number(ctx.player.duration?.());
+        const options=ctx.player._currentPlayOptions;
         // Wait for Jellyfin's normal stop/reporting lifecycle before changing
         // routes; navigating away early can lose the recent-playback entry.
         return Promise.resolve(ctx.manager.stop(ctx.player))
-            .then(()=>true)
+            .then(()=>{
+                if (itemId) void verifySearchPlaybackStop(itemId,positionMs,durationMs,options);
+                return true;
+            })
             .catch(err=>{log('stop failed',{error:String(err)});return false;});
     }
     function touchButton(show) {
@@ -2705,6 +2763,12 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       return Boolean(lastSelection && api && lastSelection.userId===api.getCurrentUserId());
     },
     returnToResults() { return returnToResults(); },
+    // Read-only item id for checking that Jellyfin saved SearchHub playback.
+    pendingPlaybackItemId() {
+      const api=currentApi();
+      return lastSelection && api && lastSelection.userId===api.getCurrentUserId()
+        ? lastSelection.itemId : null;
+    },
     handleBack() { return handleSearchBack(); }
   });
   function attachButton() {
