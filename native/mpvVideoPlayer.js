@@ -460,7 +460,7 @@
             } catch (error) {
                 // A diagnostic/history failure must never block the normal
                 // Jellyfin stopped event or native player teardown.
-                console.warn('[JFD] Resume snapshot unavailable:', error?.name || 'unknown');
+                console.warn?.('[JFD] Resume snapshot unavailable:', error?.name || 'unknown');
             }
             window.jfdMouseControls?.ended(this);
             const stopInfo = {
