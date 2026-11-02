@@ -394,3 +394,13 @@ test('all native stop paths record SearchHub position before clearing player sta
     assert.equal(s.player.currentTime(),null);
     assert.equal(s.player.currentSrc(),null);
 });
+
+test('SearchHub history snapshot failure cannot interrupt native playback stop',async()=>{
+    const s=await setup();
+    let stopped=0;
+    s.events.on(s.player,'stopped',()=>{stopped++;});
+    s.win.jfdMouseControls.recordPlaybackStop=()=>{throw Error('simulated history error');};
+    assert.doesNotThrow(()=>s.player.onEndedInternal());
+    assert.equal(stopped,1);
+    assert.equal(s.player.currentSrc(),null);
+});
