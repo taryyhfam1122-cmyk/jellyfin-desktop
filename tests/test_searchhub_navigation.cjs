@@ -589,3 +589,32 @@ test('v34 second independent physical Back is not swallowed within 850ms',()=>{
   emit('mousedown');emit('mouseup');emit('auxclick');
   assert.equal(clicks,1,'compatibility events must not navigate twice');
 });
+
+test('v35 toolbar Back uses injector-owned SearchHub works back instead of Home',()=>{
+  const start=source.indexOf('// BEGIN JFD_SEARCHHUB_UNIVERSAL_BACK_V35');
+  const end=source.indexOf('// END JFD_SEARCHHUB_UNIVERSAL_BACK_V35',start);
+  assert.ok(start>=0&&end>start);
+  const handlers={};let clicks=0,now=1000;
+  const back={click(){clicks++;}};
+  const root={getClientRects:()=>[{}],querySelector:()=>back};
+  const document={
+    getElementById:id=>id==='jfsh-v1'?root:null,
+    addEventListener(type,fn){(handlers[type] ||= []).push(fn);}
+  };
+  const window={};
+  new Function('window','document','Date',source.slice(start,end))(
+    window,document,{now:()=>now});
+  const target={closest:sel=>sel==='button,a,[role="button"],.emby-button'
+    ?{className:'headerBackButton',closest:()=>null,
+      getAttribute:()=>null,textContent:'',dataset:{}}:null};
+  const fire=()=>{
+    const event={target,preventDefault(){this.prevented=true;},
+      stopImmediatePropagation(){this.stopped=true;}};
+    handlers.click[0](event);
+    return event;
+  };
+  assert.equal(fire().prevented,true);
+  assert.equal(clicks,1);
+  now+=300;fire();
+  assert.equal(clicks,2,'second distinct toolbar Back must work');
+});
