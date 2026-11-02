@@ -86,6 +86,12 @@ public sealed class SurfaceForm : Form
             var handled = await core.ExecuteScriptAsync(
                 "Boolean(window.__jfdSurfaceSearchHub?.handleBack?.())");
             if (handled == "true") return;
+            // After a SearchHub video closes, the detail screen is a normal
+            // Jellyfin page. Its native Back must restore the cached works,
+            // not navigate the WebView browser history back to Home.
+            var detailRestored = await core.ExecuteScriptAsync(
+                "Boolean(window.__jfdSurfaceSearchHub?.returnFromDetail?.())");
+            if (detailRestored == "true") return;
         }
         catch (Exception ex)
         {
