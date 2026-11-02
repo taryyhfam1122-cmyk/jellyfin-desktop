@@ -1462,13 +1462,19 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             if (Number.isFinite(previousTicks) && previousTicks > desiredTicks+150000000) {
                 setStatus('newer-server-progress-preserved');return;
             }
-            // Older Jellyfin 10.11 servers may accept a playback stop but fail
-            // to persist resume position. Update only that single user-data
-            // field as documented; do not mark played or overwrite other fields.
+            // Older Jellyfin 10.11 servers may accept a playback stop but
+            // fail to persist resume position. Update the saved position and
+            // (only if stale) its actual last-played timestamp, which Jellyfin
+            // uses when ordering Continue Watching. Never touch Played,
+            // PlayCount, Favorite, ratings, or other per-user data.
+            const update={PlaybackPositionTicks:desiredTicks};
+            const lastPlayed=Date.parse(item.UserData?.LastPlayedDate || '');
+            if (!Number.isFinite(lastPlayed) || Date.now()-lastPlayed>600000)
+                update.LastPlayedDate=new Date().toISOString();
             await api.fetch({
                 url:api.getUrl('UserItems/'+encodeURIComponent(itemId)+'/UserData'),
                 type:'POST',contentType:'application/json',
-                data:JSON.stringify({PlaybackPositionTicks:desiredTicks})
+                data:JSON.stringify(update)
             });
             item=await readItem();
             if (savedOrCompleted(item)) setStatus('saved-by-userdata-fallback');
