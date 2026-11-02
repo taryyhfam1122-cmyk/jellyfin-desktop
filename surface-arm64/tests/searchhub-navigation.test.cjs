@@ -291,6 +291,7 @@ test('v22 SearchHub close action invokes launcher recovery immediately',()=>{
 });
 
 test('v23 native Surface Back restores cached actress works from detail',()=>{
+  const native = readFileSync(join(__dirname, '../SurfaceForm.cs'), 'utf8');
   assert.match(source,/function returnFromDetail\(\)/);
   assert.match(source,/returnFromDetail\(\) \{ return returnFromDetail\(\); \}/);
   assert.match(source,/if \(lastSelection && !playbackVisible\(\) &&/);
