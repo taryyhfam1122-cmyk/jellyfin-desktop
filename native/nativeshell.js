@@ -2616,6 +2616,19 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if(evt.target.id==='jfsh-genres'){state.detailGenres=evt.target.value;state.page=1;draw();}
   });
   document.addEventListener('keydown',evt=>{if(evt.key==='Escape'&&state.opened)close();});
+  // Windows mouse thumb buttons (XBUTTON1/XBUTTON2) arrive as button 3/4.
+  // Capture them before the embedded browser interprets Back as Home.
+  // This is independent of the overlay's on-screen "← 一覧へ" button.
+  const handleMouseThumbBack = event => {
+    if (event.button !== 3 || !state.opened || !state.detail) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    handleSearchBack();
+  };
+  window.addEventListener('pointerdown',handleMouseThumbBack,true);
+  window.addEventListener('mousedown',handleMouseThumbBack,true);
+  window.addEventListener('mouseup',handleMouseThumbBack,true);
+  window.addEventListener('auxclick',handleMouseThumbBack,true);
   window.addEventListener('popstate',handleNativeSearchBack);
   window.addEventListener('hashchange',()=>{
     if (state.opened) {
