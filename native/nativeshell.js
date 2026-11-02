@@ -2638,8 +2638,30 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       if (state.detail) handleNativeSearchBack();
       return;
     }
+    // Jellyfin's own toolbar Back uses router navigation, not XBUTTON1.
+    // When it leaves a SearchHub-opened detail page, restore the saved works.
+    if (lastSelection && !playbackVisible() &&
+        !/\\/details(?:[?\\/]|$)/i.test(window.location.hash)) {
+      const api=currentApi();
+      if (api && api.getCurrentUserId()===lastSelection.userId) {
+        returnToResults();
+        return;
+      }
+    }
     restoreNativePointer();updateReturnButton();
   });
+  // Intercept Jellyfin's on-screen Back button before its delegated router
+  // handler navigates to Home. This applies only to SearchHub detail pages.
+  document.addEventListener('click',event=>{
+    if (!lastSelection || state.opened || playbackVisible()) return;
+    if (!/\\/details(?:[?\\/]|$)/i.test(window.location.hash)) return;
+    const target=event.target?.closest?.(
+      '.headerBackButton,.btnBack,.backButton,.navBack,.btnBackButton,[data-action="back"],[is="emby-button"].headerButtonLeft');
+    if (!target || target.closest('#jfsh-return-to-cast')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    returnToResults();
+  },true);
   // The browser's thumb-button Back would otherwise leave a SearchHub
   // detail page for Home, bypassing the saved actress/works navigation.
   const handleSearchDetailMouseBack = event => {
