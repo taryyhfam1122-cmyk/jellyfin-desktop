@@ -170,13 +170,13 @@ test('top tab is hidden while video is active but returns after home navigation'
 });
 
 test('fullscreen control is aligned right of Home/Favorites in top header',()=>{
-    assert.match(implementation,/top:23px;left:calc\\(50% \\+ 236px\\);right:auto/);
-    assert.match(implementation,/top:96px;right:12px/, 'fullscreen exit remains separate');
-    assert.doesNotMatch(implementation,/top:96px;right:68px/);
+    assert.ok(implementation.includes('top:23px;left:calc(50% + 236px);right:auto'));
+    assert.ok(implementation.includes('top:96px;right:12px'), 'exit remains separate');
+    assert.ok(!implementation.includes('top:96px;right:68px'));
 });
 test('desktop video double click uses native fullscreen at top and stop-home below',()=>{
     assert.match(source,/addEventListener\('dblclick', e =>/);
     assert.match(source,/e\.clientY<window\.innerHeight\*\.25/);
     assert.match(source,/window\.api\.input\.executeActions\(\['host:fullscreen'\]\)/);
-    assert.match(source,/stopPlayback\(\);\s*window\.location\.hash='#\/home'/);
+    assert.ok(source.includes('void stopPlayback().then(() => {'));
 });
