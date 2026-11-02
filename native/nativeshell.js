@@ -2594,7 +2594,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       });
     }
   }
-  function open() {
+  function open(restoringWorks=false) {
     if(state.opened)return;
     state.api=currentApi();if(!document.body)return;
     if(!state.api){window.alert('検索一覧のデータ取得機能が準備できていません。Jellyfinにログイン後、ホーム画面で「更新」を押して再試行してください。');return;}
@@ -2613,7 +2613,11 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     installSearchSwipe(root);
     state.previousOverflow=document.documentElement.style.overflow;
     document.documentElement.style.overflow='hidden';
-    state.message='ライブラリ情報を確認中…';state.loading=true;draw();
+    // An existing actress/works list is cached in this client. Display it
+    // immediately when returning from a details page, without flashing Home
+    // or showing a fake loading screen.
+    state.message=restoringWorks?'':'ライブラリ情報を確認中…';
+    state.loading=!restoringWorks;draw();
     (async()=>{try{await loadLibraries();state.loading=false;state.message=''; await loadTab();}
       catch(ex){state.loading=false;state.error='接続に失敗しました: '+ex.message;draw();}})();
   }
@@ -2625,7 +2629,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   // Native WebView/browser Back may navigate the underlying Jellyfin page
   // rather than clicking the SearchHub overlay's own back button.
   function handleNativeSearchBack(event) {
-    if (!state.opened || !state.detail) return;
+    if (!state.opened || !state.detail || isRestoringRoute()) return;
     if (event?.cancelable) event.preventDefault();
     handleSearchBack();
     if (window.location.hash !== searchOverlayHash)
@@ -2720,6 +2724,16 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     }
     b.style.display=playbackVisible()?'none':'block';
   }
+  // Jellyfin changes the browser route while opening the SearchHub overlay.
+  // Ignore exactly that synthetic restore route in history listeners, but
+  // handle subsequent genuine mouse/keyboard Back normally.
+  let restoreRouteHash=null;
+  let restoreRouteUntil=0;
+  function isRestoringRoute() {
+    return Boolean(restoreRouteHash &&
+      window.location.hash===restoreRouteHash &&
+      Date.now()<restoreRouteUntil);
+  }
   function returnToResults() {
     const saved=lastSelection;
     if (!saved) return false;
@@ -2729,23 +2743,29 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     }
     lastSelection=null;
     if (playPoll) {clearTimeout(playPoll);playPoll=null;}
-    updateReturnButton();
+    // Restore all navigation data before showing the overlay. The previous
+    // async 180ms route-first restore could display Home between transitions
+    // and leave an overlay that looked like a works list but had lost its
+    // parent-list Back state.
+    state.scope=saved.scope;state.tab=saved.tab;
+    state.query=saved.query;state.page=saved.page;
+    state.personMode=saved.personMode;state.personLetter=saved.personLetter;
+    state.parentPage=saved.parentPage;state.parentQuery=saved.parentQuery;
+    state.parentScrollTop=saved.parentScrollTop;
+    state.restoreScrollTop=saved.detailScrollTop;
+    state.detail=saved.detail;state.detailItems=saved.detailItems;
+    state.detailGenres=saved.detailGenres;
     const desiredHash=saved.originHash || '#/home';
-    if(window.location.hash !== desiredHash) window.location.hash=desiredHash;
+    open(true);
+    // Rebuilding the overlay occurs *before* the Jellyfin route change.
+    // A late hashchange/popstate for this specific route is not a user Back.
+    if(window.location.hash!==desiredHash) {
+      restoreRouteHash=desiredHash;
+      restoreRouteUntil=Date.now()+1200;
+      window.location.hash=desiredHash;
+    }
     restoreNativePointer();
-    // Reopen from the in-memory, library-scoped index; never rescan the library.
-    setTimeout(()=>{
-      state.scope=saved.scope;state.tab=saved.tab;
-      state.query=saved.query;state.page=saved.page;
-      state.personMode=saved.personMode;state.personLetter=saved.personLetter;
-      state.parentPage=saved.parentPage;
-      state.parentQuery=saved.parentQuery;
-      state.parentScrollTop=saved.parentScrollTop;
-      state.restoreScrollTop=saved.detailScrollTop;
-      state.detail=saved.detail;state.detailItems=saved.detailItems;
-      state.detailGenres=saved.detailGenres;
-      open();
-    },180);
+    updateReturnButton();
     return true;
   }
   function tryStartNativePlayback(id, attempt=0) {
@@ -2900,6 +2920,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   window.addEventListener('auxclick',handleMouseThumbBack,true);
   window.addEventListener('popstate',handleNativeSearchBack);
   window.addEventListener('hashchange',()=>{
+    if (isRestoringRoute()) return;
     if (state.opened) {
       if (state.detail) handleNativeSearchBack();
       return;
