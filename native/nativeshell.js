@@ -1412,55 +1412,76 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         hideFramePreview();
         if(clearTap) cancelPendingTap();
     }
-    // Most playback stops are reported normally by Jellyfin's playbackManager.
-    // Only when the server still has no resumable position do we make one
-    // official, authenticated fallback stop report. Never invent play time,
-    // call deprecated PlayingItems endpoints, or overwrite a completed video.
+    // Jellyfin's playbackManager remains the primary reporter. When its stop
+    // was processed but the resumable position is still absent, use the official
+    // per-user-item partial-update API. This does not create duplicate playback
+    // sessions or change favorites, ratings, PlayCount, or Played state.
     const historyAudits = new Set();
+    const recentResumeCheck = {status:'not-checked',at:0};
     async function verifySearchPlaybackStop(itemId, positionMs, durationMs, options) {
         if (!/^[0-9a-f-]{16,64}$/i.test(itemId || '')) return;
+        // Match Jellyfin's ordinary resume rules: substantial partial playback
+        // of a video at least five minutes long, not at its beginning or end.
         if (!Number.isFinite(positionMs) || !Number.isFinite(durationMs) ||
-            durationMs <= 0 || positionMs < 120000 ||
-            positionMs < durationMs * .05 || positionMs > durationMs * .90) return;
+            durationMs < 300000 || positionMs < 120000 ||
+            positionMs < durationMs * .05 || positionMs >= durationMs * .90)
+            return;
         const api=window.ApiClient;
         if (!api || typeof api.getCurrentUserId!=='function' ||
             typeof api.getUrl!=='function' || typeof api.fetch!=='function') return;
         const userId=api.getCurrentUserId();
         if (!userId || historyAudits.has(itemId)) return;
         historyAudits.add(itemId);
+        const desiredTicks=Math.round(positionMs*10000);
+        const setStatus=status=>{
+            recentResumeCheck.status=status;recentResumeCheck.at=Date.now();
+            log('SearchHub Continue Watching: '+status);
+        };
+        const itemUrl=api.getUrl('Users/'+encodeURIComponent(userId)+'/Items/'+encodeURIComponent(itemId));
+        const readItem=async()=>{
+            const result=await api.fetch({url:itemUrl,type:'GET',dataType:'json'});
+            return typeof result==='string' ? JSON.parse(result) : result;
+        };
+        const readPosition=item=>Number(item?.UserData?.PlaybackPositionTicks || 0);
+        const savedOrCompleted=item=>{
+            if (item?.UserData?.Played===true) return true;
+            const ticks=readPosition(item);
+            return Number.isFinite(ticks) && ticks>0 &&
+                Math.abs(ticks-desiredTicks)<150000000;
+        };
         try {
-            // Give the regular playback manager time to finish its own report.
-            await new Promise(resolve=>setTimeout(resolve,1500));
-            const url=api.getUrl('Users/'+encodeURIComponent(userId)+'/Items/'+encodeURIComponent(itemId));
-            const result=await api.fetch({url,type:'GET',dataType:'json'});
-            const item=typeof result==='string' ? JSON.parse(result) : result;
-            const saved=Number(item?.UserData?.PlaybackPositionTicks || 0);
-            const desiredTicks=Math.round(positionMs*10000);
-            if (item?.UserData?.Played === true ||
-                (Number.isFinite(saved) && saved>0 &&
-                 Math.abs(saved-desiredTicks)<150000000)) {
-                log('SearchHub resume: saved by Jellyfin');
-                return;
+            // The normal Jellyfin stop may finish its server-side update after
+            // its own Promise resolves. Check before attempting any fallback.
+            await new Promise(resolve=>setTimeout(resolve,650));
+            let item=await readItem();
+            if (!item || String(item.Id || '').toLowerCase() !== itemId.toLowerCase()) {
+                setStatus('item-mismatch');return;
             }
-            // A missing/stale position may mean the normal session stop was
-            // lost on the fast native stop->SearchHub navigation path.
-            const mediaId=options?.mediaSource?.Id;
-            const payload={ItemId:itemId,PositionTicks:desiredTicks};
-            if (typeof mediaId==='string' && mediaId) payload.MediaSourceId=mediaId;
-            if (typeof options?.playSessionId==='string' && options.playSessionId)
-                payload.PlaySessionId=options.playSessionId;
+            if (savedOrCompleted(item)) {setStatus('saved-by-jellyfin');return;}
+            const previousTicks=readPosition(item);
+            if (Number.isFinite(previousTicks) && previousTicks > desiredTicks+150000000) {
+                setStatus('newer-server-progress-preserved');return;
+            }
+            // Older Jellyfin 10.11 servers may accept a playback stop but fail
+            // to persist resume position. Update only that single user-data
+            // field as documented; do not mark played or overwrite other fields.
             await api.fetch({
-                url:api.getUrl('Sessions/Playing/Stopped'),
+                url:api.getUrl('UserItems/'+encodeURIComponent(itemId)+'/UserData'),
                 type:'POST',contentType:'application/json',
-                data:JSON.stringify(payload)
+                data:JSON.stringify({PlaybackPositionTicks:desiredTicks})
             });
-            log('SearchHub resume: fallback stop report accepted');
+            item=await readItem();
+            if (savedOrCompleted(item)) setStatus('saved-by-userdata-fallback');
+            else setStatus('server-did-not-save-position');
         } catch (error) {
-            log('SearchHub resume verification failed', {error:String(error).slice(0,100)});
+            setStatus('save-error');
+            log('SearchHub Continue Watching check failed',
+                {error:String(error).slice(0,160)});
         } finally {
             historyAudits.delete(itemId);
         }
     }
+    window.__jfdDesktopResumeCheck = recentResumeCheck;
     function stopPlayback() {
         const ctx = getContext();
         if(ctx.error || !ctx.manager?.stop) return Promise.resolve(false);
