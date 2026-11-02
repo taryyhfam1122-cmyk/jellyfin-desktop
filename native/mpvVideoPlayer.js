@@ -451,6 +451,11 @@
 
         onEndedInternal() {
             if (!this._currentSrc) return;
+            // Capture actual item and position before the player clears state.
+            // The shell restricts the optional save check to SearchHub plays.
+            // This also covers standard Jellyfin stop, Back and end actions,
+            // not only the desktop's custom double-click stop shortcut.
+            window.jfdMouseControls?.recordPlaybackStop?.(this);
             window.jfdMouseControls?.ended(this);
             const stopInfo = {
                 src: this._currentSrc
