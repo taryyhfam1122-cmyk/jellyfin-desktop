@@ -1011,6 +1011,28 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     event.stopImmediatePropagation();
     returnToResults();
   },true);
+  // Jellyfin versions differ in the CSS name of their page Back button.
+  // The accessibility label also covers icon-only buttons on both WebEngine
+  // and WebView2; an explicit Home button is never treated as Back.
+  function isSearchBackControl(node) {
+    const control=node?.closest?.('button,a,[role="button"],.emby-button');
+    if (!control || control.closest('#jfsh-return-to-cast')) return false;
+    const className=typeof control.className==='string' ? control.className : '';
+    const label=[
+      control.getAttribute?.('aria-label'),control.getAttribute?.('title'),
+      control.textContent
+    ].filter(Boolean).join(' ').trim();
+    return /(^|\\s)(headerBackButton|btnBack|backButton|navBack|btnBackButton)(\\s|$)/i.test(className) ||
+      /^(戻る|Back|Go back|←|‹)(\\s|$)/i.test(label) ||
+      control.dataset?.action === 'back';
+  }
+  document.addEventListener('click',event=>{
+    if (!lastSelection || state.opened || !window.location.hash.includes('/details')) return;
+    if (!isSearchBackControl(event.target)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    returnToResults();
+  },true);
   // Small origin-restricted bridge for the native stop action. No media,
   // tokens, or library information crosses to the native process.
   window.__jfdSurfaceSearchHub = Object.freeze({
