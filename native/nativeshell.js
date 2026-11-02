@@ -796,13 +796,16 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         recordPlaybackStop(player) {
             // The native player invokes this for every exit path, while its
             // real play position and item metadata are still available.
-            const itemId=window.__jfdDesktopSearchHub?.pendingPlaybackItemId?.();
+            const itemId=window.__jfdDesktopSearchPlaybackV32?.selectedId?.() ||
+                window.__jfdDesktopSearchHub?.pendingPlaybackItemId?.();
             const playingId=player?._currentPlayOptions?.item?.Id;
+            const positionMs=Number(player?.currentTime?.());
+            const durationMs=Number(player?.duration?.());
+            window.__jfdDesktopSearchPlaybackV32?.recordStop?.(playingId,positionMs,durationMs);
             if (!itemId || typeof playingId!=='string' ||
                 playingId.toLowerCase()!==itemId.toLowerCase()) return;
             void verifySearchPlaybackStop(itemId,
-                Number(player.currentTime?.()),Number(player.duration?.()),
-                player._currentPlayOptions);
+                positionMs,durationMs,player._currentPlayOptions);
         },
         preloadFrame(player) { preloadFrame(player); },
         setPlayer(player) {
@@ -1505,7 +1508,8 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         cancelTouch(); resetDrag(); clearTimeout(singleClickTimer);
         // Capture a real current position before the player clears it.
         // SearchHub is the only playback path eligible for the fallback.
-        const expectedItemId=window.__jfdDesktopSearchHub?.pendingPlaybackItemId?.();
+        const expectedItemId=window.__jfdDesktopSearchPlaybackV32?.selectedId?.() ||
+            window.__jfdDesktopSearchHub?.pendingPlaybackItemId?.();
         const playingItemId=ctx.player._currentPlayOptions?.item?.Id;
         // The user may have navigated to another player item after opening
         // SearchHub. Never update metadata for the wrong item.
