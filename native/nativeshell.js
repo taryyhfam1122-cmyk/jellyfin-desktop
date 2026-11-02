@@ -850,11 +850,17 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         if (!activePlayer || !activePlayer._started || !activePlayer.currentSrc()) return {error: 'video-not-playing'};
         return {manager: playbackManager, native: native, player: activePlayer};
     }
+    // Read-only playback state for the SearchHub overlay controller. Never
+    // expose the media URL or Jellyfin authentication information.
+    window.__jfdDesktopPlayerActive = () => !getContext().error;
 
     function eligibleArea(e) {
         if (e.pointerType && e.pointerType !== 'mouse') return 'not-mouse';
         const node = e.target && e.target.nodeType === 1 ? e.target : null;
         if (!node) return 'no-target';
+        // Even when a native player remains mounted behind it, SearchHub
+        // owns all scrolling and navigation input within its overlay.
+        if (node.closest('#jfsh-v1')) return 'searchhub-overlay';
         if (node.closest('button,a,input,textarea,select,[role="button"],[role="slider"],.sliderContainer,.mdl-slider')) return 'ui-control';
         const h = Math.max(1, window.innerHeight);
         if (e.clientY < h * 0.065 || e.clientY > h * 0.88) return 'outside-video-center';
@@ -1305,8 +1311,14 @@ window.jmpInfo.settingsUpdate.push(function(section) {
                 window.api.input.executeActions(['host:fullscreen']);
             else ctx.player.toggleFullscreen?.();
         } else {
+            // A movie started from SearchHub returns to its exact works list.
+            // Other movies preserve the desktop's original Stop -> Home behavior.
+            const fromSearchHub = window.__jfdDesktopSearchHub?.hasPendingReturn?.() === true;
             stopPlayback();
             window.location.hash='#/home';
+            if (fromSearchHub) {
+                setTimeout(() => window.__jfdDesktopSearchHub?.returnToResults?.(),280);
+            }
         }
     }, true);
     window.addEventListener('auxclick', e => {
@@ -1413,6 +1425,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     touchStyle.textContent='#videoOsdPage,.videoPlayerContainer{touch-action:none}';
     (document.head||document.body)?.appendChild(touchStyle);
     function touchArea(e) {
+        if (e.target?.closest?.('#jfsh-v1')) return false;
         return !getContext().error && !eligibleArea({target:e.target,clientY:e.clientY});
     }
     function touchConsume(e) {
@@ -1562,6 +1575,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         else if(s.mode==='seek')touchSetDelta(s,dx);
     }
     window.addEventListener('pointerdown',e=>{
+        if(e.target?.closest?.('#jfsh-v1')) return;
         if(e.pointerType!=='touch')return;
         if(touchBlocked){touchConsume(e);return;}
         if(fingers.size){
