@@ -303,3 +303,17 @@ test('v23 Surface volume is quantized to whole percent for playback reporting',(
   const controls = readFileSync(join(__dirname,'../controls.js'),'utf8');
   assert.match(controls,/Math\.round\(clamp\(g\.volume-dy\/\(innerHeight\*\.6\),1\)\*100\)\/100/);
 });
+
+test('v24 native ARM64 search action always visible in both window modes',()=>{
+  const native=readFileSync(join(__dirname,'../SurfaceForm.cs'),'utf8');
+  assert.match(native,/var search = Button\("検索一覧", 96, \(\) => _ = OpenSearchHubAsync\(\)\)/);
+  assert.match(native,/var fullSearch = Button\("検索一覧", 100, \(\) => _ = OpenSearchHubAsync\(\)\)/);
+  assert.match(native,/_toolbar\.Controls\.AddRange\(\[back, home, search,/);
+  assert.match(native,/_fullscreenBar\.Controls\.AddRange\(\[leaveFullscreen, fullHome, fullSearch,/);
+  assert.match(native,/private async Task OpenSearchHubAsync\(\)/);
+  assert.match(native,/window\.__jfdSurfaceSearchHub\?\.openSearch\?\.\(\)/);
+  assert.match(native,/document\.getElementById\('jfsh-launch'\)/);
+  assert.match(native,/File\.ReadAllTextAsync\([\s\S]*?"searchhub\.js"/);
+  assert.match(native,/ExecuteScriptAsync\(script\)/);
+  assert.match(source,/openSearch\(\) \{ open\(\); return state\.opened; \}/);
+});
