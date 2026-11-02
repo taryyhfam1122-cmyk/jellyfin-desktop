@@ -68,3 +68,141 @@ test('v18 restores scroll after results render and after returning from item det
   assert.match(source, /parentScrollTop:state\.parentScrollTop/);
   assert.match(source, /detailScrollTop:document\.getElementById\(ID\)\?\.scrollTop/);
 });
+
+
+test('v23 SearchHub controls are hidden during native mpv playback',()=>{
+  assert.match(source, /BEGIN JFD_DESKTOP_PLAYBACK_UI_V23/);
+  assert.match(source, /#jfsh-launch,body\.'/);
+  assert.match(source, /#jfsh-return-to-cast/);
+  assert.match(source, /__jfdDesktopPlayerActive/);
+  assert.match(source, /display:none!important;visibility:hidden!important;pointer-events:none!important/);
+  const begin=source.indexOf('// BEGIN JFD_DESKTOP_PLAYBACK_UI_V23');
+  const end=source.indexOf('// END JFD_DESKTOP_PLAYBACK_UI_V23',begin);
+  const mainGuard=source.indexOf('if (window.__JellyfinSearchHubV1) return;');
+  assert.ok(begin>0 && end>begin && mainGuard>end);
+  const script=source.slice(begin,end);
+  const flags=new Set(),styles=[];
+  let playing=false;
+  const document={
+    readyState:'complete',head:{appendChild(node){styles.push(node);}},
+    body:{classList:{
+      contains:k=>flags.has(k),
+      toggle(k,on){if(on)flags.add(k);else flags.delete(k);}
+    }},
+    getElementById:id=>styles.find(x=>x.id===id)||null,
+    createElement:tag=>({tag,id:'',textContent:''}),
+    querySelectorAll:()=>[],
+    addEventListener(){}
+  };
+  const window={location:{hash:'#/home'},addEventListener(){},
+    __JellyfinSearchHubV1:true,__jfdDesktopPlayerActive:()=>playing};
+  const ui=new Function('window','document','getComputedStyle','setInterval',
+    script+'; return window.__jfdDesktopPlaybackUI;')(
+      window,document,()=>({visibility:'visible',display:'block'}),()=>1);
+  assert.ok(ui);
+  assert.equal(ui.isPlaying(),false);
+  playing=true;ui.sync();
+  assert.equal(ui.isPlaying(),true);
+  assert.equal(flags.has('jfd-desktop-playback-active'),true);
+  assert.equal(styles.length,1);
+  playing=false;ui.sync();
+  assert.equal(flags.has('jfd-desktop-playback-active'),false);
+});
+test('v23 restored launcher keeps its position and reappears after closing SearchHub',()=>{
+  const start=source.indexOf('// BEGIN JFD_DESKTOP_LAUNCHER_RECOVERY_V23');
+  const end=source.indexOf('// END JFD_DESKTOP_LAUNCHER_RECOVERY_V23',start);
+  assert.ok(start>0 && end>start);
+  const nodes=new Map();
+  let playing=false, loggedIn=true;
+  const client={getCurrentUserId:()=>loggedIn?'user':'',fetch(){},getUrl(){}};
+  const doc={
+    readyState:'complete',fullscreenElement:null,
+    body:{appendChild(node){nodes.set(node.id,node);}},
+    head:{appendChild(node){nodes.set(node.id,node);}},
+    getElementById:id=>nodes.get(id)||null,
+    createElement:tag=>({tag,id:'',type:'',textContent:'',title:'',
+      style:{display:'',properties:{},
+        setProperty(k,v,p){this.properties[k]={value:v,priority:p};}}}),
+    addEventListener(){}
+  };
+  const win={ApiClient:client,__JellyfinSearchHubV1:true,
+    __jfdDesktopPlaybackUI:{isPlaying:()=>playing},addEventListener(){}};
+  const launcher=new Function('window','document','setInterval',
+    source.slice(start,end)+'; return window.__jfdDesktopLauncher;')(
+      win,doc,()=>1);
+  const button=()=>nodes.get('jfsh-launch');
+  assert.ok(button());
+  assert.equal(button().style.display,'');
+  assert.deepEqual(button().style.properties.top,{value:'180px',priority:'important'});
+  nodes.set('jfsh-v1',{});
+  launcher.repair();
+  assert.equal(button().style.display,'none');
+  nodes.delete('jfsh-v1');nodes.delete('jfsh-launch');
+  assert.equal(launcher.repair(),true);
+  assert.ok(button());
+  assert.equal(button().style.display,'');
+  playing=true;launcher.repair();
+  assert.equal(button().style.display,'none');
+  playing=false;launcher.repair();
+  assert.equal(button().style.display,'');
+  loggedIn=false;launcher.repair();
+  assert.equal(button().style.display,'none');
+});
+test('v23 closing the overlay triggers launcher recovery immediately',()=>{
+  const begin=source.indexOf('  function close() {',source.indexOf('// BEGIN CHATGPT_JELLYFIN_SEARCHHUB_V15'));
+  const end=source.indexOf('  // Restore the exact actress/series result set',begin);
+  assert.ok(begin>0 && end>begin);
+  const state={opened:true,epoch:1,previousOverflow:'auto',
+    detail:{name:'test'},detailItems:[{}],query:'q',page:2};
+  let repaired=0,removed=0;
+  const doc={documentElement:{style:{overflow:'hidden'}},
+    getElementById:()=>({remove(){removed++;}})};
+  const win={__jfdDesktopPlaybackUI:{sync(){}},
+    __jfdDesktopLauncher:{repair(){repaired++;}}};
+  const close=new Function('state','window','document','ID',
+    source.slice(begin,end)+';return close;')(state,win,doc,'jfsh-v1');
+  close();
+  assert.equal(removed,1);
+  assert.equal(state.opened,false);
+  assert.equal(state.detail,null);
+  assert.equal(repaired,1);
+  assert.equal(doc.documentElement.style.overflow,'auto');
+});
+test('v23 mouse double-click stop returns to SearchHub works without affecting ordinary playback',()=>{
+  assert.match(source,/const fromSearchHub = window\.__jfdDesktopSearchHub\?\.hasPendingReturn\?\.\(\) === true/);
+  assert.match(source,/if \(fromSearchHub\) \{\s*setTimeout\(\(\) => window\.__jfdDesktopSearchHub\?\.returnToResults\?\.\(\),280\)/);
+  assert.match(source,/window\.location\.hash='#\/home'/);
+  assert.match(source,/window\.__jfdDesktopSearchHub=Object\.freeze/);
+  assert.match(source,/returnToResults\(\) \{ return returnToResults\(\); \}/);
+  assert.match(source,/hasPendingReturn\(\)/);
+});
+test('v23 SearchHub back swipe is isolated from native mouse/touch seeking',()=>{
+  assert.match(source,/overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y/);
+  assert.match(source,/function installSearchSwipe\(root\)/);
+  assert.match(source,/installSearchSwipe\(root\)/);
+  assert.match(source,/node\.closest\('#jfsh-v1'\)/);
+  const begin=source.indexOf('  function handleSearchBack() {');
+  const end=source.indexOf('  function close() {',begin);
+  assert.ok(begin>0 && end>begin);
+  const state={opened:true,detail:{name:'actor'}};
+  let returned=0;
+  const callbacks={};
+  const root={addEventListener(type,cb){callbacks[type]=cb;}};
+  const nav=new Function('state','backToParentList',
+    source.slice(begin,end)+';return {installSearchSwipe,handleSearchBack};')(
+      state,()=>{returned++;state.detail=null;});
+  nav.installSearchSwipe(root);
+  const point=(x,y)=>({identifier:1,clientX:x,clientY:y});
+  const target={closest:()=>null};
+  let prevented=0;
+  callbacks.touchstart({touches:[point(100,500)],target});
+  callbacks.touchmove({touches:[point(100,200)],preventDefault(){prevented++;}});
+  callbacks.touchend({changedTouches:[point(100,200)]});
+  assert.equal(prevented,0,'vertical swipe should scroll normally');
+  assert.equal(returned,0);
+  callbacks.touchstart({touches:[point(100,500)],target});
+  callbacks.touchmove({touches:[point(220,490)],preventDefault(){prevented++;}});
+  callbacks.touchend({changedTouches:[point(220,490)]});
+  assert.equal(returned,1,'horizontal swipe returns to actress list');
+  assert.equal(state.opened,true,'overlay stays open');
+});
