@@ -234,3 +234,10 @@ test('v26 mouse thumb Back from native SearchHub detail restores works',()=>{
   assert.match(source,/window\.addEventListener\(type,handleSearchDetailMouseBack,true\)/);
   assert.match(source,/event\.stopImmediatePropagation\(\);\s*returnToResults\(\)/);
 });
+
+test('v27 Jellyfin toolbar Back from SearchHub detail restores works',()=>{
+  assert.match(source,/\.headerBackButton,\.btnBack,\.backButton,\.navBack/);
+  assert.match(source,/if \(!lastSelection \|\| state\.opened \|\| playbackVisible\(\)\) return/);
+  assert.match(source,/event\.stopImmediatePropagation\(\);\s*returnToResults\(\)/);
+  assert.match(source,/if \(lastSelection && !playbackVisible\(\) &&/);
+});
