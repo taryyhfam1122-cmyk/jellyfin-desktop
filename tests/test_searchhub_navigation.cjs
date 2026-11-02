@@ -555,3 +555,37 @@ test('v33 one mouse Back on detail never immediately consumes next works-to-actr
   send('pointerdown');
   assert.equal(worksClicks,1,'second distinct Back returns to actress');
 });
+
+test('v34 second independent physical Back is not swallowed within 850ms',()=>{
+  const start=source.indexOf('// BEGIN JFD_SEARCHHUB_BACK_COMPAT_V33');
+  const end=source.indexOf('// END JFD_SEARCHHUB_BACK_COMPAT_V33',start);
+  assert.ok(start>=0 && end>start);
+  const listeners={};let now=1000,clicks=0,worksBack=null;
+  const root={querySelector:()=>worksBack};
+  const document={
+    getElementById:id=>id==='jfsh-v1'&&worksBack?root:null,
+    addEventListener(type,fn){(listeners[type] ||= []).push(fn);}
+  };
+  const window={location:{hash:'#/details?id=abc'},
+    __jfdDesktopSearchPlaybackV32:{selectedId:()=> 'abc'},
+    addEventListener(type,fn){(listeners[type] ||= []).push(fn);}
+  };
+  new Function('window','document','Date',source.slice(start,end))(
+    window,document,{now:()=>now});
+  function emit(type){
+    const e={type,button:3,preventDefault(){this.prevented=true;},
+      stopImmediatePropagation(){this.stopped=true;}};
+    for(const fn of listeners[type]||[])fn(e);
+    return e;
+  }
+  emit('pointerdown'); // Jellyfin handles details -> works
+  worksBack={click(){clicks++;}};
+  window.location.hash='#/home';
+  emit('mousedown');emit('mouseup');emit('auxclick');
+  assert.equal(clicks,0,'same gesture must not skip the works list');
+  now+=300;
+  emit('pointerdown'); // independent second press, within old 850ms window
+  assert.equal(clicks,1,'second physical press must return to actress');
+  emit('mousedown');emit('mouseup');emit('auxclick');
+  assert.equal(clicks,1,'compatibility events must not navigate twice');
+});
