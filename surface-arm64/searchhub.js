@@ -1020,7 +1020,10 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     },
     returnToResults() { return returnToResults(); },
     handleBack() { return handleSearchBack(); },
-    returnFromDetail() { return returnFromDetail(); }
+    returnFromDetail() { return returnFromDetail(); },
+    // Native ARM64 toolbar and fullscreen controls must not rely on CSS or
+    // the floating launcher being visible; use the same read-only panel.
+    openSearch() { open(); return state.opened; }
   });
   function attachButton() {
     updateReturnButton();
