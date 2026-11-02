@@ -793,6 +793,17 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     // Dependencies are supplied by the bundled plugins, not jellyfin-web globals.
     window.jfdMouseControls = {
         setManager(manager) { playbackManager = manager; },
+        recordPlaybackStop(player) {
+            // The native player invokes this for every exit path, while its
+            // real play position and item metadata are still available.
+            const itemId=window.__jfdDesktopSearchHub?.pendingPlaybackItemId?.();
+            const playingId=player?._currentPlayOptions?.item?.Id;
+            if (!itemId || typeof playingId!=='string' ||
+                playingId.toLowerCase()!==itemId.toLowerCase()) return;
+            void verifySearchPlaybackStop(itemId,
+                Number(player.currentTime?.()),Number(player.duration?.()),
+                player._currentPlayOptions);
+        },
         preloadFrame(player) { preloadFrame(player); },
         setPlayer(player) {
             activePlayer = player;
