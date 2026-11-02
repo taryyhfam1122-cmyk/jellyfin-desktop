@@ -279,6 +279,7 @@ test('SearchHub saves missing resume position without modifying unrelated user d
   assert.ok(begin>0 && end>begin);
   const calls=[];
   let saved=0,played=false,idMismatch=false,failWrite=false;
+  let lastPlayedDate=null;
   const itemId='d7e66b9ab0e843e78c00b212ab39009a';
   const api={
     getCurrentUserId:()=> 'user123',
@@ -287,17 +288,22 @@ test('SearchHub saves missing resume position without modifying unrelated user d
       calls.push(args);
       if(args.type==='GET') return {
         Id:idMismatch?'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa':itemId,
-        UserData:{PlaybackPositionTicks:saved,Played:played}
+        UserData:{PlaybackPositionTicks:saved,Played:played,LastPlayedDate:lastPlayedDate}
       };
       assert.equal(args.type,'POST');
       assert.equal(args.url,'UserItems/'+itemId+'/UserData');
       assert.equal(args.contentType,'application/json');
       const body=JSON.parse(args.data);
-      assert.deepEqual(Object.keys(body),['PlaybackPositionTicks'],
-        'only save position; never overwrite favorites, rating or watched state');
       assert.equal(body.PlaybackPositionTicks,6000000000);
+      assert.deepEqual(
+        Object.keys(body).filter(k=>!['PlaybackPositionTicks','LastPlayedDate'].includes(k)),[],
+        'never overwrite favorites, ratings, played state or play count');
+      if (body.LastPlayedDate) {
+        assert.ok(Number.isFinite(Date.parse(body.LastPlayedDate)));
+      }
       if(failWrite) throw Error('test simulated server rejection');
       saved=body.PlaybackPositionTicks;
+      lastPlayedDate=body.LastPlayedDate || lastPlayedDate;
       return {};
     }
   };
@@ -316,7 +322,13 @@ test('SearchHub saves missing resume position without modifying unrelated user d
   assert.equal(calls.filter(x=>x.type==='POST').length,1,
     'one targeted user-data update when stop lost position');
   assert.equal(saved,6000000000);
+  assert.ok(lastPlayedDate, 'missing last-played date gets updated');
   assert.equal(win.__jfdDesktopResumeCheck.status,'saved-by-userdata-fallback');
+  calls.length=0;saved=0;lastPlayedDate=new Date().toISOString();
+  await verify(...params);
+  assert.equal(calls.filter(x=>x.type==='POST').length,1);
+  assert.deepEqual(Object.keys(JSON.parse(calls.find(x=>x.type==='POST').data)),
+    ['PlaybackPositionTicks'], 'recent server date must be preserved');
   calls.length=0;played=true;
   await verify(...params);
   assert.equal(calls.filter(x=>x.type==='POST').length,0,
