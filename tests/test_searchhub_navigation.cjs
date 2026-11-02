@@ -273,48 +273,68 @@ test('Desktop header places SearchHub next to Home/Favorites, not posters',()=>{
   assert.ok(!source.includes('top:180px!important'));
 });
 
-test('SearchHub uses server-confirmed resume before any official stop fallback',async()=>{
-  const start=source.indexOf('    // Most playback stops are reported normally by Jellyfin');
-  const end=source.indexOf('    function stopPlayback() {',start);
-  assert.ok(start>0 && end>start);
+test('SearchHub saves missing resume position without modifying unrelated user data',async()=>{
+  const begin=source.indexOf("    // Jellyfin's playbackManager remains the primary reporter.");
+  const end=source.indexOf('    function stopPlayback() {',begin);
+  assert.ok(begin>0 && end>begin);
   const calls=[];
-  let saved=0,played=false;
-  const playerId='d7e66b9ab0e843e78c00b212ab39009a';
+  let saved=0,played=false,idMismatch=false,failWrite=false;
+  const itemId='d7e66b9ab0e843e78c00b212ab39009a';
   const api={
     getCurrentUserId:()=> 'user123',
-    getUrl:route => route,
+    getUrl:route=>route,
     async fetch(args) {
       calls.push(args);
-      if(args.type==='GET')
-        return {UserData:{PlaybackPositionTicks:saved,Played:played}};
-      assert.equal(args.url,'Sessions/Playing/Stopped');
+      if(args.type==='GET') return {
+        Id:idMismatch?'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa':itemId,
+        UserData:{PlaybackPositionTicks:saved,Played:played}
+      };
       assert.equal(args.type,'POST');
+      assert.equal(args.url,'UserItems/'+itemId+'/UserData');
       assert.equal(args.contentType,'application/json');
       const body=JSON.parse(args.data);
-      assert.equal(body.ItemId,playerId);
-      assert.equal(body.PositionTicks,6000000000);
-      assert.equal(body.MediaSourceId,'media123');
-      return '';
+      assert.deepEqual(Object.keys(body),['PlaybackPositionTicks'],
+        'only save position; never overwrite favorites, rating or watched state');
+      assert.equal(body.PlaybackPositionTicks,6000000000);
+      if(failWrite) throw Error('test simulated server rejection');
+      saved=body.PlaybackPositionTicks;
+      return {};
     }
   };
   const win={ApiClient:api};
   const verify=new Function('window','setTimeout','log',
-    source.slice(start,end)+';return verifySearchPlaybackStop;')(
+    source.slice(begin,end)+';return verifySearchPlaybackStop;')(
       win,callback=>{callback();return 1;},()=>{});
-  const params=[playerId,600000,7200000,{mediaSource:{Id:'media123'}}];
+  const params=[itemId,600000,7200000,{mediaSource:{Id:'media123'}}];
   saved=6000000000;
   await verify(...params);
   assert.equal(calls.filter(x=>x.type==='POST').length,0,
-    'never duplicate a confirmed Jellyfin stop');
+    'do not rewrite a correct Jellyfin position');
+  assert.equal(win.__jfdDesktopResumeCheck.status,'saved-by-jellyfin');
   calls.length=0;saved=0;
   await verify(...params);
   assert.equal(calls.filter(x=>x.type==='POST').length,1,
-    'one supported stop report when the server lost resume position');
+    'one targeted user-data update when stop lost position');
+  assert.equal(saved,6000000000);
+  assert.equal(win.__jfdDesktopResumeCheck.status,'saved-by-userdata-fallback');
   calls.length=0;played=true;
   await verify(...params);
   assert.equal(calls.filter(x=>x.type==='POST').length,0,
-    'completed items must not be overwritten');
-  calls.length=0;played=false;
-  await verify(playerId,30000,7200000,{});
-  assert.equal(calls.length,0,'short playback is not enough to save resume');
+    'completed items must never be rewritten');
+  calls.length=0;played=false;saved=7000000000;
+  await verify(...params);
+  assert.equal(calls.filter(x=>x.type==='POST').length,0,
+    'preserve newer progress from another device');
+  calls.length=0;saved=0;
+  await verify(itemId,30000,7200000,{});
+  assert.equal(calls.length,0,'short playback is not a resumable play');
+  await verify(itemId,200000,200000,{});
+  assert.equal(calls.length,0,'completed playback is not resumable');
+  calls.length=0;idMismatch=true;
+  await verify(...params);
+  assert.equal(calls.filter(x=>x.type==='POST').length,0,
+    'mismatched server response must not update user data');
+  calls.length=0;idMismatch=false;failWrite=true;
+  await verify(...params);
+  assert.equal(win.__jfdDesktopResumeCheck.status,'save-error');
 });
