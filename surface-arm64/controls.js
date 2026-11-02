@@ -312,7 +312,10 @@
                             : g.leftEdge && Math.abs(dy)>Math.abs(dx) ? 'speed'
                             : Math.abs(dx)>=Math.abs(dy) ? 'seek' : 'ignore';
         if (g.mode === 'volume') {
-            const volume=clamp(g.volume-dy/(innerHeight*.6),1);
+            // Keep Jellyfin's reported VolumeLevel integral (0-100).
+            // Fractional volume percentages can cause playback-progress
+            // reports to be rejected by certain Jellyfin server versions.
+            const volume=Math.round(clamp(g.volume-dy/(innerHeight*.6),1)*100)/100;
             g.v.volume=volume;
             g.v.muted=false;
             showOverlay('音量 '+Math.round(volume*100)+'%');
