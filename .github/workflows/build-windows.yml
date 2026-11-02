@@ -138,17 +138,17 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-searchhub-v33-navigation-restore-validation
+        name: ${{ matrix.artifact }}-searchhub-v34-back-repeat-fix-validation
         path: build/portable-validation/
         if-no-files-found: ignore
     - name: Archive installer
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-searchhub-v33-navigation-restore-installer
+        name: ${{ matrix.artifact }}-searchhub-v34-back-repeat-fix-installer
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.exe
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-searchhub-v33-navigation-restore-portable
+        name: ${{ matrix.artifact }}-searchhub-v34-back-repeat-fix-portable
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.zip
         if-no-files-found: error
