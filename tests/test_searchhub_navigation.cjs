@@ -375,3 +375,61 @@ test('SearchHub stop never writes resume state to a different playing item',asyn
   assert.deepEqual(await run(otherId),[]);
   assert.deepEqual(await run(itemId),[itemId]);
 });
+
+test('v32 captures SearchHub playback even when server Injector owns the overlay',async()=>{
+  const start=source.indexOf('// BEGIN JFD_SEARCHHUB_HISTORY_DIAGNOSTIC_V32');
+  const end=source.indexOf('// END JFD_SEARCHHUB_HISTORY_DIAGNOSTIC_V32',start);
+  assert.ok(start>=0&&end>start,'standalone tracker exists outside SearchHub guard');
+  let loggedIn='user123',writes=0;
+  const itemId='d7e66b9ab0e843e78c00b212ab39009a';
+  const handlers={};
+  const api={
+    getCurrentUserId:()=>loggedIn,
+    getUrl:p=>p,
+    async fetch({url,type}){
+      if(type==='POST')writes++;
+      if(url==='Users/user123/Items/'+itemId) return {
+        Id:itemId,UserData:{PlaybackPositionTicks:6000000000,Played:false}
+      };
+      if(url.startsWith('UserItems/Resume')) return {Items:[{Id:itemId}]};
+      if(url==='Users/user123') return {
+        Configuration:{LatestItemsExcludes:['test-library']}
+      };
+      throw Error('unexpected diagnostic URL '+url);
+    }
+  };
+  const doc={
+    addEventListener(type,fn){handlers[type]=fn;},
+    querySelector(){return null;},
+  };
+  const win={ApiClient:api,__JellyfinSearchHubV1:true,
+    __jfdDesktopResumeCheck:{status:'saved-by-jellyfin'}};
+  const tracker=new Function('window','document','setInterval',
+    source.slice(start,end)+';return window.__jfdDesktopSearchPlaybackV32;')(
+      win,doc,()=>1);
+  assert.ok(tracker);
+  assert.equal(tracker.selectedId(),null);
+  handlers.click({target:{closest(selector){
+    return selector.includes('#jfsh-v1')?{dataset:{id:itemId}}:null;
+  }}});
+  assert.equal(tracker.selectedId(),itemId);
+  tracker.recordStop(itemId,600000,7200000);
+  const report=await tracker.diagnose();
+  assert.match(report,/プレーヤー停止記録: matching-searchhub-video/);
+  assert.match(report,/Jellyfinサーバーの保存位置: 600秒/);
+  assert.match(report,/再生を続けるAPI上位100件: 対象あり/);
+  assert.match(report,/ホーム表示から除外したライブラリ: 1件/);
+  assert.match(report,/別スクリプトが先に起動した可能性/);
+  assert.equal(writes,0,'diagnostics must not write to server');
+  loggedIn='different-user';
+  assert.equal(tracker.selectedId(),null,'must never reuse another user\'s selection');
+});
+
+test('v32 sends stopped-item identity through Injector-independent tracker',()=>{
+  assert.match(source,/__jfdDesktopSearchPlaybackV32\?\.selectedId\?\.\(\)/);
+  assert.match(source,/__jfdDesktopSearchPlaybackV32\?\.recordStop\?\.\(playingId,positionMs,durationMs\)/);
+  const tracking=source.indexOf('// BEGIN JFD_SEARCHHUB_HISTORY_DIAGNOSTIC_V32');
+  const guard=source.indexOf('if (window.__JellyfinSearchHubV1) return;');
+  assert.ok(tracking>0 && guard>tracking,
+    'click tracking must initialize even if server injected SearchHub first');
+});
