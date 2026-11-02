@@ -1816,7 +1816,8 @@ window.jmpInfo.settingsUpdate.push(function(section) {
       lines.push('視聴完了扱い: '+(item?.UserData?.Played===true?'はい':'いいえ'));
     } catch(_) { lines.push('Jellyfinサーバーの保存位置: 取得エラー'); }
     try {
-      const url=api.getUrl('UserItems/Resume')+'?Limit=100&MediaTypes=Video';
+      const base=api.getUrl('UserItems/Resume');
+      const url=base+(base.includes('?')?'&':'?')+'Limit=100&MediaTypes=Video';
       const data=await get(url);
       const items=Array.isArray(data)?data:(data?.Items||[]);
       if(!Array.isArray(items))throw Error('invalid');
