@@ -170,7 +170,10 @@ test('v23 closing the overlay triggers launcher recovery immediately',()=>{
 });
 test('v23 mouse double-click stop returns to SearchHub works without affecting ordinary playback',()=>{
   assert.match(source,/const fromSearchHub = window\.__jfdDesktopSearchHub\?\.hasPendingReturn\?\.\(\) === true/);
-  assert.match(source,/if \(fromSearchHub\) \{\s*setTimeout\(\(\) => window\.__jfdDesktopSearchHub\?\.returnToResults\?\.\(\),280\)/);
+  assert.match(source,/if \(fromSearchHub\) \{[\s\S]*?const restore = \(\) => window\.__jfdDesktopSearchHub\?\.returnToResults\?\.\(\) === true/);
+  assert.match(source,/if \(!restore\(\)\) window\.location\.hash='#\/home'/);
+  assert.match(source,/state\.restoreScrollTop=saved\.detailScrollTop/);
+  assert.match(source,/state\.parentScrollTop=saved\.parentScrollTop/);
   assert.match(source,/window\.location\.hash='#\/home'/);
   assert.match(source,/window\.__jfdDesktopSearchHub=Object\.freeze/);
   assert.match(source,/returnToResults\(\) \{ return returnToResults\(\); \}/);
