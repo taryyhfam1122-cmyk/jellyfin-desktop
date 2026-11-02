@@ -1746,6 +1746,126 @@ window.jmpInfo.settingsUpdate.push(function(section) {
 })();
 // END CHATGPT_JFD_MOUSECONTROLS_V05
 
+// BEGIN JFD_SEARCHHUB_HISTORY_DIAGNOSTIC_V32
+// Runs independently of the main SearchHub global guard. A server-side
+// JavaScript Injector can load its own SearchHub first, making the desktop's
+// SearchHub bridge unavailable. Track the actual user's SearchHub clicks
+// from the DOM without intercepting or changing their navigation.
+(() => {
+  'use strict';
+  if (window.__jfdDesktopSearchPlaybackV32) return;
+  const valid=id=>/^[0-9a-f-]{16,64}$/i.test(id||'');
+  let selected=null;
+  const latest={stop:'not-recorded',at:0,positionMs:null,durationMs:null};
+  const apiClient=()=>window.ApiClient;
+  const userId=()=>{
+    try{return apiClient()?.getCurrentUserId?.()||null;}catch(_){return null;}
+  };
+  function selectedId() {
+    if (!selected || selected.userId!==userId() ||
+        Date.now()-selected.at>7200000) return null;
+    return selected.id;
+  }
+  document.addEventListener('click',event=>{
+    const btn=event.target?.closest?.(
+      '#jfsh-v1 [data-act="play"],#jfsh-v1 [data-act="item"]');
+    const id=btn?.dataset?.id;
+    const uid=userId();
+    if(!uid||!valid(id))return;
+    selected={id,userId:uid,at:Date.now()};
+    latest.stop='not-recorded';latest.at=0;
+    latest.positionMs=null;latest.durationMs=null;
+  },true);
+  function recordStop(playingId,positionMs,durationMs) {
+    latest.at=Date.now();
+    latest.positionMs=Number.isFinite(positionMs)?positionMs:null;
+    latest.durationMs=Number.isFinite(durationMs)?durationMs:null;
+    latest.stop=!selectedId()?'no-searchhub-selection'
+      : typeof playingId!=='string'?'no-player-item-id'
+      : playingId.toLowerCase()===selectedId().toLowerCase()
+        ?'matching-searchhub-video':'different-video';
+  }
+  // Read-only diagnostic: query the very same resumable-item endpoint used
+  // by Jellyfin's home Continue Watching row. No tokens, paths or URLs are
+  // copied into the user-visible report.
+  async function diagnose() {
+    const api=apiClient(),id=selectedId(),uid=userId();
+    const lines=['再生を続ける 診断（読み取り専用）'];
+    lines.push('検索一覧からの作品選択: '+(id?'検出':'検出なし'));
+    lines.push('プレーヤー停止記録: '+latest.stop);
+    if(latest.positionMs!==null)
+      lines.push('停止時の再生位置: '+Math.round(latest.positionMs/1000)+'秒');
+    lines.push('履歴保存処理: '+(window.__jfdDesktopResumeCheck?.status||'未確認'));
+    lines.push('検索一覧の競合: '+(window.__jfdDesktopSearchHub?'標準':'別スクリプトが先に起動した可能性'));
+    if(!api||!id||!uid||typeof api.fetch!=='function'||typeof api.getUrl!=='function') {
+      lines.push('判定: 検索一覧から作品を再生・停止した後に診断してください。');
+      return lines.join('\n');
+    }
+    const get=async url=>{
+      const res=await api.fetch({url,type:'GET',dataType:'json'});
+      return typeof res==='string'?JSON.parse(res):res;
+    };
+    try {
+      const item=await get(api.getUrl('Users/'+encodeURIComponent(uid)+'/Items/'+encodeURIComponent(id)));
+      const ticks=Number(item?.UserData?.PlaybackPositionTicks||0);
+      lines.push('Jellyfinサーバーの保存位置: '+(ticks>0?Math.round(ticks/10000000)+'秒':'0秒'));
+      lines.push('視聴完了扱い: '+(item?.UserData?.Played===true?'はい':'いいえ'));
+    } catch(_) { lines.push('Jellyfinサーバーの保存位置: 取得エラー'); }
+    try {
+      const url=api.getUrl('UserItems/Resume')+'?Limit=100&MediaTypes=Video';
+      const data=await get(url);
+      const items=Array.isArray(data)?data:(data?.Items||[]);
+      if(!Array.isArray(items))throw Error('invalid');
+      lines.push('再生を続けるAPI上位100件: '+
+        (items.some(item=>String(item?.Id||'').toLowerCase()===id.toLowerCase())
+          ?'対象あり':'対象なし'));
+      lines.push('API取得件数: '+items.length+'件');
+    }catch(_) {lines.push('再生を続けるAPI: 取得エラー');}
+    try {
+      const u=await get(api.getUrl('Users/'+encodeURIComponent(uid)));
+      const excludes=u?.Configuration?.LatestItemsExcludes;
+      if(Array.isArray(excludes)){
+        lines.push('ホーム表示から除外したライブラリ: '+excludes.length+'件');
+        if(excludes.length)lines.push('※ Jellyfin 10.11では除外設定が再生を続ける一覧に影響する既知の問題があります。');
+      }
+    }catch(_){lines.push('ホーム表示設定: 取得エラー');}
+    return lines.join('\n');
+  }
+  async function showDiagnostic() {
+    const root=document.getElementById('jfsh-v1');
+    const shell=root?.querySelector('.jfsh-shell');
+    if(!shell)return;
+    let panel=shell.querySelector('#jfd-history-diagnostic-result');
+    if(!panel){
+      panel=document.createElement('pre');
+      panel.id='jfd-history-diagnostic-result';
+      panel.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;border-radius:10px;background:#13253d;color:#eff7ff;border:1px solid #52708a;line-height:1.6;user-select:text';
+      shell.insertBefore(panel,shell.children[1]||null);
+    }
+    panel.textContent='再生履歴を確認しています…';
+    try{panel.textContent=await diagnose();}
+    catch(_){panel.textContent='診断処理を完了できませんでした。';}
+  }
+  function attach() {
+    const top=document.querySelector('#jfsh-v1 .jfsh-top');
+    if(!top||top.querySelector('#jfd-history-diagnostic-button'))return;
+    const btn=document.createElement('button');
+    btn.id='jfd-history-diagnostic-button';
+    btn.type='button';btn.className='jfsh-reload';
+    btn.textContent='再生履歴診断';
+    btn.title='最後に検索一覧から選んだ作品のサーバー保存状況を表示';
+    btn.addEventListener('click',()=>{void showDiagnostic();});
+    const close=top.querySelector('.jfsh-close');
+    top.insertBefore(btn,close||null);
+  }
+  window.__jfdDesktopSearchPlaybackV32=Object.freeze({
+    selectedId,recordStop,diagnose
+  });
+  document.addEventListener('DOMContentLoaded',attach,{once:true});
+  setInterval(attach,1100);
+  attach();
+})();
+// END JFD_SEARCHHUB_HISTORY_DIAGNOSTIC_V32
 // BEGIN CHATGPT_SEARCHHUB_CENTER_LAUNCH_V16
 // Independent of the SearchHub global guard: the server's Injector may load first.
 (() => {
