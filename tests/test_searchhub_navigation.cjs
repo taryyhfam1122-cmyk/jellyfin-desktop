@@ -133,7 +133,9 @@ test('v23 restored launcher keeps its position and reappears after closing Searc
   const button=()=>nodes.get('jfsh-launch');
   assert.ok(button());
   assert.equal(button().style.display,'');
-  assert.deepEqual(button().style.properties.top,{value:'180px',priority:'important'});
+  assert.deepEqual(button().style.properties.top,{value:'23px',priority:'important'});
+  assert.deepEqual(button().style.properties.left,
+    {value:'calc(50% + 108px)',priority:'important'});
   nodes.set('jfsh-v1',{});
   launcher.repair();
   assert.equal(button().style.display,'none');
@@ -262,4 +264,57 @@ test('SearchHub detail Back recognizes mouse and accessible controls, never Home
   assert.equal(back(make('ホーム')),false);
   assert.equal(back(make('← 女優・作品一覧に戻る','','',true)),false);
   assert.equal(back({closest:()=>null}),false);
+});
+
+test('Desktop home header aligns SearchHub beside Home/Favorites, never over posters',()=>{
+  assert.match(source,/top:23px!important;left:calc\\(50% \\+ 108px\\)!important/);
+  assert.match(source,/button\\.style\\.setProperty\\('top','23px','important'\\)/);
+  assert.match(source,/button\\.style\\.setProperty\\('left','calc\\(50% \\+ 108px\\)','important'\\)/);
+  assert.doesNotMatch(source,/top:180px!important/);
+});
+
+test('SearchHub uses server-confirmed resume before any official stop fallback',async()=>{
+  const start=source.indexOf('    // Most playback stops are reported normally by Jellyfin');
+  const end=source.indexOf('    function stopPlayback() {',start);
+  assert.ok(start>0 && end>start);
+  const calls=[];
+  let saved=0,played=false;
+  const playerId='d7e66b9ab0e843e78c00b212ab39009a';
+  const api={
+    getCurrentUserId:()=> 'user123',
+    getUrl:route => route,
+    async fetch(args) {
+      calls.push(args);
+      if(args.type==='GET')
+        return {UserData:{PlaybackPositionTicks:saved,Played:played}};
+      assert.equal(args.url,'Sessions/Playing/Stopped');
+      assert.equal(args.type,'POST');
+      assert.equal(args.contentType,'application/json');
+      const body=JSON.parse(args.data);
+      assert.equal(body.ItemId,playerId);
+      assert.equal(body.PositionTicks,6000000000);
+      assert.equal(body.MediaSourceId,'media123');
+      return '';
+    }
+  };
+  const win={ApiClient:api};
+  const verify=new Function('window','setTimeout','log',
+    source.slice(start,end)+';return verifySearchPlaybackStop;')(
+      win,callback=>{callback();return 1;},()=>{});
+  const params=[playerId,600000,7200000,{mediaSource:{Id:'media123'}}];
+  saved=6000000000;
+  await verify(...params);
+  assert.equal(calls.filter(x=>x.type==='POST').length,0,
+    'never duplicate a confirmed Jellyfin stop');
+  calls.length=0;saved=0;
+  await verify(...params);
+  assert.equal(calls.filter(x=>x.type==='POST').length,1,
+    'one supported stop report when the server lost resume position');
+  calls.length=0;played=true;
+  await verify(...params);
+  assert.equal(calls.filter(x=>x.type==='POST').length,0,
+    'completed items must not be overwritten');
+  calls.length=0;played=false;
+  await verify(playerId,30000,7200000,{});
+  assert.equal(calls.length,0,'short playback is not enough to save resume');
 });
