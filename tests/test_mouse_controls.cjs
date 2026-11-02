@@ -4,7 +4,12 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const shell = fs.readFileSync(path.join(__dirname, '../native/nativeshell.js'), 'utf8');
-const code = shell.slice(shell.indexOf('// BEGIN CHATGPT_JFD_MOUSECONTROLS_V05'));
+const mouseBegin = shell.indexOf('// BEGIN CHATGPT_JFD_MOUSECONTROLS_V05');
+const mouseEnd = shell.indexOf('// END CHATGPT_JFD_MOUSECONTROLS_V05', mouseBegin);
+assert.ok(mouseBegin>=0 && mouseEnd>mouseBegin, 'mouse controls region exists');
+// A unit test of mouse controls must not execute the unrelated SearchHub/
+// playback-visibility modules, which expect the complete Jellyfin DOM.
+const code = shell.slice(mouseBegin, mouseEnd);
 const playerCode = fs.readFileSync(path.join(__dirname, '../native/mpvVideoPlayer.js'), 'utf8');
 async function setup(pointer = true) {
     const nodes = [];
