@@ -433,3 +433,84 @@ test('v32 sends stopped-item identity through Injector-independent tracker',()=>
   assert.ok(tracking>0 && guard>tracking,
     'click tracking must initialize even if server injected SearchHub first');
 });
+
+test('v33 mouse Back returns from restored SearchHub works to actress exactly once',()=>{
+  const start=source.indexOf('// BEGIN JFD_SEARCHHUB_BACK_COMPAT_V33');
+  const end=source.indexOf('// END JFD_SEARCHHUB_BACK_COMPAT_V33',start);
+  assert.ok(start>0 && end>start);
+  const listeners={};
+  let back=0,clicks=0,prevented=0,stopped=0;
+  const backButton={click(){clicks++;back=null;}};
+  back=backButton;
+  const root={querySelector(selector){
+    assert.match(selector,/data-act="back"/);
+    return back;
+  }};
+  const document={
+    getElementById:id=>id==='jfsh-v1'?root:null,
+    addEventListener(type,cb){(listeners[type] ||= []).push(cb);}
+  };
+  const window={addEventListener(type,cb){(listeners[type] ||= []).push(cb);}};
+  new Function('window','document',source.slice(start,end))(window,document);
+  const emit=type=>{
+    const e={button:3,preventDefault(){prevented++;},
+      stopImmediatePropagation(){stopped++;}};
+    for(const fn of listeners[type]||[])fn(e);
+  };
+  emit('pointerdown');
+  emit('mousedown');emit('mouseup');emit('auxclick');
+  assert.equal(clicks,1,'a physical Back press moves one level only');
+  assert.equal(prevented,4,'all XBUTTON1 event paths are captured');
+  assert.equal(stopped,4,'Jellyfin route must never navigate to Home');
+  assert.ok(window.__jfdSearchBackCompatV33,
+    'also active when server-side Injector owns the SearchHub overlay');
+});
+
+test('v33 restores works before route change, with saved actress parent state',()=>{
+  const begin=source.indexOf('  // Jellyfin changes the browser route while opening');
+  const end=source.indexOf('  function tryStartNativePlayback',begin);
+  assert.ok(begin>0 && end>begin);
+  let currentHash='#/details?id=d7e66b9ab0e843e78c00b212ab39009a';
+  let opens=[], hashChanges=0, routeHash=currentHash, updates=0, restoredCursor=0;
+  const window={location:{
+    get hash(){return currentHash;},
+    set hash(next){hashChanges++;currentHash=next;}
+  }};
+  const state={opened:false,detail:null,detailItems:[],page:1};
+  const original={
+    userId:'user-1',originHash:'#/home',scope:'jav',tab:'persons',
+    detail:{type:'person',name:'Example',id:'name:example'},
+    detailItems:[{Id:'test-movie'}],
+    page:2,parentPage:6,query:'AB',personMode:'alpha',
+    personLetter:'A',parentQuery:'search',parentScrollTop:820,
+    detailScrollTop:420,detailGenres:'genre'
+  };
+  let lastSelection=original;
+  const methods=new Function('window','state','currentApi','open',
+    'clearTimeout','updateReturnButton','restoreNativePointer',
+    'searchOverlayHash','playPoll','lastSelection',
+    source.slice(begin,end)+
+    ';return {returnToResults,isRestoringRoute,check:()=>({searchOverlayHash,lastSelection})};')(
+    window,state,()=>({getCurrentUserId:()=> 'user-1'}),
+    restored=>{opens.push({restored,detail:state.detail,
+      parentPage:state.parentPage,query:state.parentQuery});state.opened=true;},
+    ()=>{},()=>{updates++;},()=>{restoredCursor++;},
+    '#/details?id=old',null,lastSelection
+  );
+  assert.equal(methods.returnToResults(),true);
+  assert.equal(opens.length,1,'results become visible synchronously');
+  assert.equal(opens[0].restored,true,'skip loading placeholder and Home flash');
+  assert.equal(opens[0].parentPage,6);
+  assert.equal(state.detail,original.detail);
+  assert.equal(state.parentQuery,'search');
+  assert.equal(state.parentScrollTop,820);
+  assert.equal(state.restoreScrollTop,420);
+  assert.equal(window.location.hash,'#/home');
+  assert.equal(hashChanges,1);
+  assert.equal(methods.check().searchOverlayHash,'#/home');
+  assert.equal(methods.check().lastSelection,null);
+  assert.equal(methods.isRestoringRoute(),true,
+    'synthetic route change must not consume the first actress Back');
+  assert.equal(restoredCursor,1);
+  assert.ok(updates>0);
+});
