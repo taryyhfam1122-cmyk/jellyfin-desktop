@@ -1315,9 +1315,16 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             // Other movies preserve the desktop's original Stop -> Home behavior.
             const fromSearchHub = window.__jfdDesktopSearchHub?.hasPendingReturn?.() === true;
             stopPlayback();
-            window.location.hash='#/home';
             if (fromSearchHub) {
-                setTimeout(() => window.__jfdDesktopSearchHub?.returnToResults?.(),280);
+                // Restore the saved SearchHub works list directly. Do not
+                // navigate Home first: doing so can tear down the saved route
+                // before the SearchHub return callback gets a chance to run.
+                const restore = () => window.__jfdDesktopSearchHub?.returnToResults?.() === true;
+                setTimeout(() => {
+                    if (!restore()) window.location.hash='#/home';
+                }, 350);
+            } else {
+                window.location.hash='#/home';
             }
         }
     }, true);
