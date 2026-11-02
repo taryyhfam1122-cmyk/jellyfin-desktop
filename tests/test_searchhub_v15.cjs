@@ -35,7 +35,7 @@ test('Search launcher is centered under Home/Favorites and independent of Inject
   assert.match(code, /BEGIN CHATGPT_SEARCHHUB_CENTER_LAUNCH_V16/);
   assert.match(code, /jfsh-launch-center-v16/);
   assert.match(code, /top:180px!important;left:50%!important;right:auto!important;transform:translateX\(-50%\)!important/);
-  assert.match(code, /#jfsh-launch \{position:fixed;top:88px;left:50%;right:auto;transform:translateX\(-50%\);/);
+  assert.match(code, /#jfsh-launch \{position:fixed;top:180px;left:50%;right:auto;transform:translateX\(-50%\);/);
 });
 
 test('Desktop launcher remains centered and lower on notebooks',()=>{
