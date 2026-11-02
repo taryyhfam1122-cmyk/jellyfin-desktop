@@ -373,3 +373,24 @@ test('desktop mouse: edge horizontal drag retains original seek behavior',async(
     assert.equal(s.player.currentTime(),135000);
     assert.equal(s.player.getPlaybackRate(),1);
 });
+
+test('all native stop paths record SearchHub position before clearing player state', async()=>{
+    const s=await setup();
+    const itemId='d7e66b9ab0e843e78c00b212ab39009a';
+    s.player._currentPlayOptions={item:{Id:itemId},mediaSource:{Id:'media'}};
+    let captured=null;
+    s.win.jfdMouseControls.recordPlaybackStop=player=>{
+        captured={
+            itemId:player._currentPlayOptions?.item?.Id,
+            position:player.currentTime(),
+            duration:player.duration(),
+            source:player.currentSrc()
+        };
+    };
+    s.player.onEndedInternal();
+    assert.deepEqual(captured,{
+        itemId,position:120000,duration:600000,source:'movie'
+    });
+    assert.equal(s.player.currentTime(),null);
+    assert.equal(s.player.currentSrc(),null);
+});
