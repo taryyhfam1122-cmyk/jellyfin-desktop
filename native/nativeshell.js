@@ -1750,6 +1750,42 @@ window.jmpInfo.settingsUpdate.push(function(section) {
 })();
 // END CHATGPT_JFD_MOUSECONTROLS_V05
 
+// BEGIN JFD_SEARCHHUB_BACK_COMPAT_V33
+// Restore SearchHub works -> actress/category with the *real overlay Back*
+// even if the server-side JavaScript Injector owns the SearchHub instance.
+// Navigation is handled from capture phase before WebEngine sees XBUTTON1.
+(() => {
+  'use strict';
+  if(window.__jfdSearchBackCompatV33) return;
+  let lastBackAt=-Infinity;
+  function currentWorksBack() {
+    const overlay=document.getElementById('jfsh-v1');
+    return overlay?.querySelector('.jfsh-detailhead [data-act="back"]') || null;
+  }
+  function handleMouseBack(event) {
+    if(event.button!==3) return false;
+    const back=currentWorksBack();
+    if(!back && Date.now()-lastBackAt>700) return false;
+    event.preventDefault?.();
+    event.stopImmediatePropagation?.();
+    if(Date.now()-lastBackAt<700) return true; // One physical press, not four backs.
+    lastBackAt=Date.now();
+    back?.click(); // The active SearchHub implementation updates its own state.
+    return true;
+  }
+  for(const type of ['pointerdown','mousedown','mouseup','auxclick'])
+    window.addEventListener(type,handleMouseBack,true);
+  document.addEventListener('keydown',event=>{
+    if(event.altKey && event.key==='ArrowLeft' && currentWorksBack()){
+      event.preventDefault?.();event.stopImmediatePropagation?.();
+      if(Date.now()-lastBackAt>700) {
+        lastBackAt=Date.now();currentWorksBack()?.click();
+      }
+    }
+  },true);
+  window.__jfdSearchBackCompatV33=Object.freeze({currentWorksBack});
+})();
+// END JFD_SEARCHHUB_BACK_COMPAT_V33
 // BEGIN JFD_SEARCHHUB_HISTORY_DIAGNOSTIC_V32
 // Runs independently of the main SearchHub global guard. A server-side
 // JavaScript Injector can load its own SearchHub first, making the desktop's
