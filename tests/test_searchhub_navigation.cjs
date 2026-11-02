@@ -338,3 +338,28 @@ test('SearchHub saves missing resume position without modifying unrelated user d
   await verify(...params);
   assert.equal(win.__jfdDesktopResumeCheck.status,'save-error');
 });
+
+test('SearchHub stop never writes resume state to a different playing item',async()=>{
+  const begin=source.indexOf('    function stopPlayback() {');
+  const end=source.indexOf('    function touchButton(show) {',begin);
+  assert.ok(begin>0 && end>begin);
+  const itemId='d7e66b9ab0e843e78c00b212ab39009a';
+  const otherId='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  async function run(playingId) {
+    const reported=[];
+    const player={currentTime:()=>600000,duration:()=>7200000,
+      _currentPlayOptions:{item:{Id:playingId},mediaSource:{Id:'media'}}};
+    const manager={stop(){return Promise.resolve();}};
+    const win={__jfdDesktopSearchHub:{pendingPlaybackItemId:()=>itemId}};
+    const stop=new Function(
+      'window','getContext','cancelTouch','resetDrag','clearTimeout',
+      'singleClickTimer','verifySearchPlaybackStop','log',
+      source.slice(begin,end)+';return stopPlayback;'
+    )(win,()=>({manager,player}),()=>{},()=>{},()=>{},null,
+      id=>{reported.push(id);},()=>{});
+    assert.equal(await stop(),true);
+    return reported;
+  }
+  assert.deepEqual(await run(otherId),[]);
+  assert.deepEqual(await run(itemId),[itemId]);
+});
