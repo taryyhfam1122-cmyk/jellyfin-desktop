@@ -641,10 +641,10 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         tab.type = 'button';
         tab.setAttribute('aria-label', '全画面・通常表示を切り替える');
         tab.title = '全画面と通常表示を切り替える';
-        tab.style.cssText = 'position:fixed;top:96px;right:68px;min-width:122px;height:44px;'
-            + 'z-index:2147483646;display:none;padding:0 14px;'
-            + 'border:1px solid #777;border-radius:8px;background:rgba(24,24,28,.91);'
-            + 'color:#fff;font:600 15px/1 system-ui,sans-serif;cursor:pointer;'
+        tab.style.cssText = 'position:fixed;top:23px;left:calc(50% + 236px);right:auto;min-width:122px;height:42px;'
+            + 'z-index:4100;display:none;padding:0 11px;'
+            + 'border:0;border-radius:5px;background:transparent;'
+            + 'color:#e8e8e8;font:600 14px/1 system-ui,sans-serif;cursor:pointer;'
             + 'user-select:none;touch-action:manipulation;';
         tab.addEventListener('click', function (event) {
             event.preventDefault();
@@ -1651,7 +1651,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     if (!document.head || document.getElementById('jfsh-launch-center-v16')) return;
     const style = document.createElement('style');
     style.id = 'jfsh-launch-center-v16';
-    style.textContent = '#jfsh-launch {top:180px!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;}';
+    style.textContent = '#jfsh-launch {top:23px!important;left:calc(50% + 108px)!important;right:auto!important;transform:none!important;}';
     document.head.appendChild(style);
   };
   apply();
@@ -1718,7 +1718,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     if (!document.head || document.getElementById(STYLE_ID)) return;
     const style=document.createElement('style');
     style.id=STYLE_ID;
-    style.textContent='#jfsh-launch {top:180px!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;}';
+    style.textContent='#jfsh-launch {top:23px!important;left:calc(50% + 108px)!important;right:auto!important;transform:none!important;}';
     document.head.appendChild(style);
   }
   function ready() {
@@ -1750,7 +1750,10 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     }
     if(button) {
       // Inline !important wins over an older server-side Injector's 88px rule.
-      button.style.setProperty('top','180px','important');
+      button.style.setProperty('top','23px','important');
+      button.style.setProperty('left','calc(50% + 108px)','important');
+      button.style.setProperty('transform','none','important');
+      button.style.setProperty('right','auto','important');
       button.style.display=hidden?'none':'';
     }
     return Boolean(button && !hidden);
@@ -2255,8 +2258,8 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if(document.getElementById(STYLE_ID))return;
     const s=document.createElement('style');s.id=STYLE_ID;
     s.textContent=`
-    #jfsh-launch {position:fixed;top:180px;left:50%;right:auto;transform:translateX(-50%);z-index:4100;border:1px solid #3b526b;background:#172b47;color:#fff;border-radius:24px;padding:11px 18px;font-size:14px;font-weight:700;box-shadow:0 6px 24px #0008;cursor:pointer}
-    #jfsh-launch:hover{background:#234e77}#${ID}{position:fixed;inset:0;z-index:990000;background:#0b111bed;color:#eef4ff;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;font:14px/1.5 system-ui,sans-serif}
+    #jfsh-launch {position:fixed;top:23px;left:calc(50% + 108px);right:auto;transform:none;z-index:4100;border:0;background:transparent;color:#e8e8e8;border-radius:5px;padding:0 11px;height:42px;font:600 14px system-ui,sans-serif;box-shadow:none;cursor:pointer;white-space:nowrap}
+    #jfsh-launch:hover{background:#333;color:#fff}#${ID}{position:fixed;inset:0;z-index:990000;background:#0b111bed;color:#eef4ff;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;font:14px/1.5 system-ui,sans-serif}
     #${ID} * {box-sizing:border-box}#${ID} button,#${ID} select,#${ID} input{font:inherit}#${ID} .jfsh-shell{width:100%;max-width:2000px;margin:auto;padding:24px 16px 90px}
     #${ID} .jfsh-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}#${ID} h2{font-size:24px;margin:0;font-weight:750;flex:1}
     #${ID} .jfsh-close,#${ID} .jfsh-reload{padding:8px 15px;border-radius:9px;background:#26354c;color:white;border:1px solid #536078;cursor:pointer}
@@ -2295,7 +2298,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     #${ID} .jfsh-detailhead span{color:#b9cede;font-size:13px}#${ID} .jfsh-back,#${ID} .jfsh-more{border:1px solid #496482;background:#1c3853;color:#fff;padding:10px 17px;border-radius:10px;cursor:pointer}
     #${ID} .jfsh-more{display:block;margin:25px auto;padding:14px 38px}#${ID} .jfsh-filters{margin:15px 0}
     @media(max-width:950px){#${ID} .jfsh-people{grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:12px}}
-    @media(max-width:650px){#jfsh-launch{top:180px;right:auto;padding:8px 12px}#${ID} .jfsh-shell{padding:15px 12px 65px}#${ID} h2{font-size:20px}#${ID} .jfsh-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}#${ID} .jfsh-people{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}#${ID} .jfsh-name{font-size:12px;padding:6px}#${ID} .jfsh-people .jfsh-name{font-size:13px;min-height:34px}#${ID} .jfsh-page{min-width:37px;min-height:40px;padding:7px}#${ID} .jfsh-page-step{min-width:69px}#${ID} .jfsh-catgrid{grid-template-columns:1fr 1fr;gap:8px}#${ID} .jfsh-category{padding:12px 9px;flex-wrap:wrap}#${ID} .jfsh-category small{width:100%}}
+    @media(max-width:650px){#jfsh-launch{top:23px;left:calc(50% + 108px);right:auto;padding:0 7px}#${ID} .jfsh-shell{padding:15px 12px 65px}#${ID} h2{font-size:20px}#${ID} .jfsh-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}#${ID} .jfsh-people{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}#${ID} .jfsh-name{font-size:12px;padding:6px}#${ID} .jfsh-people .jfsh-name{font-size:13px;min-height:34px}#${ID} .jfsh-page{min-width:37px;min-height:40px;padding:7px}#${ID} .jfsh-page-step{min-width:69px}#${ID} .jfsh-catgrid{grid-template-columns:1fr 1fr;gap:8px}#${ID} .jfsh-category{padding:12px 9px;flex-wrap:wrap}#${ID} .jfsh-category small{width:100%}}
     `;document.head.appendChild(s);
   }
   function setStatus() {
