@@ -1758,9 +1758,13 @@ window.jmpInfo.settingsUpdate.push(function(section) {
   'use strict';
   if(window.__jfdSearchBackCompatV33) return;
   let lastBackAt=-Infinity;
+  // Suppress only the remaining events of the same physical Back gesture.
+  // A fixed 850ms window swallowed the user's next independent Back press.
   let suppressUntil=0;
+  let detailGestureActive=false;
   function suppressAfterDetailReturn() {
-    suppressUntil=Date.now()+850;
+    detailGestureActive=true;
+    suppressUntil=Date.now()+850; // fallback for WebEngine without pointerup
   }
   function currentWorksBack() {
     const overlay=document.getElementById('jfsh-v1');
@@ -1772,10 +1776,17 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     // The first event can return from a Jellyfin details page to works.
     // Ignore its remaining compatibility events instead of immediately
     // navigating a second time from works to the actress list.
-    if(Date.now()<suppressUntil) {
+    // A new pointerdown always starts a new physical gesture. Do not
+    // swallow it merely because the previous details page returned recently.
+    if(event.type==='pointerdown' && detailGestureActive) {
+      detailGestureActive=false;
+      suppressUntil=0;
+    }
+    if(detailGestureActive && Date.now()<suppressUntil) {
       event.preventDefault?.();event.stopImmediatePropagation?.();
       return true;
     }
+    if(detailGestureActive && Date.now()>=suppressUntil) detailGestureActive=false;
     const back=currentWorksBack();
     if(!back && Date.now()-lastBackAt>700) {
       if(window.location.hash.includes('/details') &&
