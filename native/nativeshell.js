@@ -1758,14 +1758,31 @@ window.jmpInfo.settingsUpdate.push(function(section) {
   'use strict';
   if(window.__jfdSearchBackCompatV33) return;
   let lastBackAt=-Infinity;
+  let suppressUntil=0;
+  function suppressAfterDetailReturn() {
+    suppressUntil=Date.now()+850;
+  }
   function currentWorksBack() {
     const overlay=document.getElementById('jfsh-v1');
     return overlay?.querySelector('.jfsh-detailhead [data-act="back"]') || null;
   }
   function handleMouseBack(event) {
     if(event.button!==3) return false;
+    // One XBUTTON1 gesture emits pointerdown, mousedown, mouseup and auxclick.
+    // The first event can return from a Jellyfin details page to works.
+    // Ignore its remaining compatibility events instead of immediately
+    // navigating a second time from works to the actress list.
+    if(Date.now()<suppressUntil) {
+      event.preventDefault?.();event.stopImmediatePropagation?.();
+      return true;
+    }
     const back=currentWorksBack();
-    if(!back && Date.now()-lastBackAt>700) return false;
+    if(!back && Date.now()-lastBackAt>700) {
+      if(window.location.hash.includes('/details') &&
+         window.__jfdDesktopSearchPlaybackV32?.selectedId?.())
+        suppressAfterDetailReturn();
+      return false;
+    }
     event.preventDefault?.();
     event.stopImmediatePropagation?.();
     if(Date.now()-lastBackAt<700) return true; // One physical press, not four backs.
@@ -1783,7 +1800,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
       }
     }
   },true);
-  window.__jfdSearchBackCompatV33=Object.freeze({currentWorksBack});
+  window.__jfdSearchBackCompatV33=Object.freeze({currentWorksBack,suppressAfterDetailReturn});
 })();
 // END JFD_SEARCHHUB_BACK_COMPAT_V33
 // BEGIN JFD_SEARCHHUB_HISTORY_DIAGNOSTIC_V32
@@ -2742,6 +2759,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       lastSelection=null;updateReturnButton();return false;
     }
     lastSelection=null;
+    window.__jfdSearchBackCompatV33?.suppressAfterDetailReturn?.();
     if (playPoll) {clearTimeout(playPoll);playPoll=null;}
     // Restore all navigation data before showing the overlay. The previous
     // async 180ms route-first restore could display Home between transitions
