@@ -2757,6 +2757,9 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     state.detailGenres=saved.detailGenres;
     const desiredHash=saved.originHash || '#/home';
     open(true);
+    // The overlay's actual parent is the original Home (or library) route,
+    // never the transient Jellyfin details route we just left.
+    searchOverlayHash=desiredHash;
     // Rebuilding the overlay occurs *before* the Jellyfin route change.
     // A late hashchange/popstate for this specific route is not a user Back.
     if(window.location.hash!==desiredHash) {
