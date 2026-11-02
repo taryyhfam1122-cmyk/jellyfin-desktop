@@ -28,17 +28,21 @@ public sealed class SurfaceForm : Form
 
         var back = Button("←", 48, () => _ = BackPreservingSearchAsync());
         var home = Button("ホーム", 74, NavigateHomeDirect);
+        // An always-accessible native launcher avoids depending on the
+        // Jellyfin page's floating search button or fullscreen CSS.
+        var search = Button("検索一覧", 96, () => _ = OpenSearchHubAsync());
         var connect = Button("接続", 66, () => _ = ConnectAsync());
         var refresh = Button("更新", 65, () => _browser.Reload());
         var full = Button("全画面", 82, ToggleFullscreen);
         var exit = Button("終了 ✕", 95, Close);
         var leaveFullscreen = Button("通常表示", 102, ToggleFullscreen);
         var fullHome = Button("ホーム", 90, NavigateHomeDirect);
+        var fullSearch = Button("検索一覧", 100, () => _ = OpenSearchHubAsync());
         var fullRefresh = Button("更新 ↻", 100, () => _browser.Reload());
         var fullExit = Button("アプリを終了 ✕", 148, Close);
 
-        _toolbar.Controls.AddRange([back, home, _server, connect, refresh, full, exit]);
-        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullRefresh, fullExit]);
+        _toolbar.Controls.AddRange([back, home, search, _server, connect, refresh, full, exit]);
+        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullSearch, fullRefresh, fullExit]);
         Controls.Add(_browser);
         Controls.Add(_toolbar);
         Controls.Add(_fullscreenBar);
@@ -75,6 +79,59 @@ public sealed class SurfaceForm : Form
         _fullscreenBar.Visible = _fullscreen;
         FormBorderStyle = _fullscreen ? FormBorderStyle.None : FormBorderStyle.Sizable;
         WindowState = FormWindowState.Maximized;
+    }
+
+    // The native SearchHub launcher remains visible even when Jellyfin's
+    // injected/floating HTML launcher is hidden by a page or style update.
+    // First ask the Surface SearchHub bridge to open. If a server-side
+    // JavaScript Injector owns SearchHub instead, click its existing launcher.
+    private async Task OpenSearchHubAsync()
+    {
+        var core = _browser.CoreWebView2;
+        if (core is null || _serverUri is null) return;
+        const string openScript = """
+            (() => {
+                try {
+                    if (window.__jfdSurfaceSearchHub?.openSearch?.() === true) return 'opened';
+                    const button = document.getElementById('jfsh-launch');
+                    if (button) {
+                        button.click();
+                        return document.getElementById('jfsh-v1') ? 'opened' : 'unavailable';
+                    }
+                    return 'missing';
+                } catch (_) { return 'unavailable'; }
+            })()
+            """;
+        try
+        {
+            var result = await core.ExecuteScriptAsync(openScript);
+            if (result == "\"opened\"") return;
+
+            // A document-start injection can fail on redirect/login transitions.
+            // Retry only the self-contained, origin-guarded SearchHub script
+            // on explicit user interaction; do not reinject touch controllers.
+            if (result == "\"missing\"" || result == "\"unavailable\"")
+            {
+                var script = await File.ReadAllTextAsync(
+                    Path.Combine(AppContext.BaseDirectory, "searchhub.js"));
+                script = script.Replace("\"__JFD_SERVER_ORIGIN\"",
+                    JsonSerializer.Serialize(_server.Text), StringComparison.Ordinal);
+                await core.ExecuteScriptAsync(script);
+                result = await core.ExecuteScriptAsync(openScript);
+                if (result == "\"opened\"") return;
+            }
+            Log("SearchHub launch unavailable (no active logged-in launcher)");
+            MessageBox.Show(
+                "検索一覧を開けませんでした。Jellyfinへのログインを確認し、更新を押して再試行してください。",
+                "Jellyfin Surface 検索一覧",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            Log("SearchHub launch failed: " + ex.GetType().Name);
+            MessageBox.Show("検索一覧を開けませんでした。アプリの更新後も発生する場合は surface.log を確認してください。",
+                "Jellyfin Surface 検索一覧");
+        }
     }
 
     private async Task BackPreservingSearchAsync()
