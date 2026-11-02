@@ -2637,6 +2637,18 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     }
     restoreNativePointer();updateReturnButton();
   });
+  // The browser's thumb-button Back would otherwise leave a SearchHub
+  // detail page for Home, bypassing the saved actress/works navigation.
+  const handleSearchDetailMouseBack = event => {
+    if (event.button !== 3 || state.opened || !lastSelection || playbackVisible()) return;
+    const api=currentApi();
+    if (!api || api.getCurrentUserId() !== lastSelection.userId) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    returnToResults();
+  };
+  ['pointerdown','mousedown','mouseup','auxclick'].forEach(type =>
+    window.addEventListener(type,handleSearchDetailMouseBack,true));
   window.__jfdDesktopSearchHub=Object.freeze({
     hasPendingReturn() {
       const api=currentApi();
