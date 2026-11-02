@@ -455,7 +455,13 @@
             // The shell restricts the optional save check to SearchHub plays.
             // This also covers standard Jellyfin stop, Back and end actions,
             // not only the desktop's custom double-click stop shortcut.
-            window.jfdMouseControls?.recordPlaybackStop?.(this);
+            try {
+                window.jfdMouseControls?.recordPlaybackStop?.(this);
+            } catch (error) {
+                // A diagnostic/history failure must never block the normal
+                // Jellyfin stopped event or native player teardown.
+                console.warn('[JFD] Resume snapshot unavailable:', error?.name || 'unknown');
+            }
             window.jfdMouseControls?.ended(this);
             const stopInfo = {
                 src: this._currentSrc
