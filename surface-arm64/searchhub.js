@@ -978,14 +978,39 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if(evt.target.id==='jfsh-genres'){state.detailGenres=evt.target.value;state.page=1;draw();}
   });
   document.addEventListener('keydown',evt=>{if(evt.key==='Escape'&&state.opened)close();});
+  function returnFromDetail() {
+    // Only intercept Back from a detail screen opened by SearchHub.
+    // Never steal the Back operation while video playback is active.
+    if (state.opened || !lastSelection || playbackVisible()) return false;
+    if (!window.location.hash.includes('/details')) return false;
+    return returnToResults();
+  }
   window.addEventListener('hashchange',()=>{
     // A browser/trackpad back swipe must not destroy the SearchHub overlay.
     if(state.opened) {
       handleSearchBack();
       return;
     }
+    // Jellyfin's own Back button can navigate directly to Home. Restore the
+    // same cached works list as the visible '女優・作品一覧に戻る' command.
+    if (lastSelection && !playbackVisible() &&
+        !window.location.hash.includes('/details')) {
+      if (returnToResults()) return;
+    }
     restoreNativePointer();updateReturnButton();
   });
+  // Jellyfin toolbar Back is handled by its delegated click listener.
+  // Capture only that button on SearchHub-opened native details screens.
+  document.addEventListener('click',event=>{
+    if (state.opened || !lastSelection || playbackVisible() ||
+        !window.location.hash.includes('/details')) return;
+    const button=event.target?.closest?.(
+      '.headerBackButton,.btnBack,.backButton,.navBack,.btnBackButton,[data-action="back"]');
+    if (!button || button.closest('#jfsh-return-to-cast')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    returnToResults();
+  },true);
   // Small origin-restricted bridge for the native stop action. No media,
   // tokens, or library information crosses to the native process.
   window.__jfdSurfaceSearchHub = Object.freeze({
@@ -994,7 +1019,8 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       return Boolean(lastSelection && api && lastSelection.userId===api.getCurrentUserId());
     },
     returnToResults() { return returnToResults(); },
-    handleBack() { return handleSearchBack(); }
+    handleBack() { return handleSearchBack(); },
+    returnFromDetail() { return returnFromDetail(); }
   });
   function attachButton() {
     updateReturnButton();
