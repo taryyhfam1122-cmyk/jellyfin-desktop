@@ -31,16 +31,16 @@ test('Launcher is created without an API-client prerequisite', () => {
   assert.match(code, /window\.alert\('検索一覧のデータ取得機能/);
 });
 
-test('Search launcher is centered under Home/Favorites and independent of Injector load order', () => {
+test('SearchHub is aligned immediately right of Home/Favorites', () => {
   assert.match(code, /BEGIN CHATGPT_SEARCHHUB_CENTER_LAUNCH_V16/);
   assert.match(code, /jfsh-launch-center-v16/);
-  assert.match(code, /top:180px!important;left:50%!important;right:auto!important;transform:translateX\(-50%\)!important/);
-  assert.match(code, /#jfsh-launch \{position:fixed;top:180px;left:50%;right:auto;transform:translateX\(-50%\);/);
+  assert.ok(code.includes('top:23px!important;left:calc(50% + 108px)!important'));
+  assert.ok(code.includes('#jfsh-launch {position:fixed;top:23px;left:calc(50% + 108px)'));
 });
 
-test('Desktop launcher remains centered and lower on notebooks',()=>{
-  assert.match(code, /top:180px!important;left:50%!important/);
+test('Desktop launch recovery keeps the Home/Favorites header position',()=>{
   assert.match(code, /BEGIN JFD_DESKTOP_LAUNCHER_RECOVERY_V23/);
-  assert.match(code, /top:180px;left:50%;right:auto;transform:translateX/);
-  assert.match(code, /setProperty\('top','180px','important'\)/);
+  assert.ok(code.includes("button.style.setProperty('top','23px','important')"));
+  assert.ok(code.includes("button.style.setProperty('left','calc(50% + 108px)','important')"));
+  assert.ok(!code.includes('top:180px!important'));
 });
