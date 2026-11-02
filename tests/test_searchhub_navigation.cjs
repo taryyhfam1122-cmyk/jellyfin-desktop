@@ -227,3 +227,10 @@ test('v25 mouse thumb Back is captured before browser Home navigation',()=>{
   assert.match(source,/window\.addEventListener\('auxclick',handleMouseThumbBack,true\)/);
   assert.match(source,/event\.stopImmediatePropagation\(\)/);
 });
+
+test('v26 mouse thumb Back from native SearchHub detail restores works',()=>{
+  assert.match(source,/function handleSearchDetailMouseBack|const handleSearchDetailMouseBack/);
+  assert.match(source,/event\.button !== 3 \|\| state\.opened \|\| !lastSelection \|\| playbackVisible\(\)/);
+  assert.match(source,/window\.addEventListener\(type,handleSearchDetailMouseBack,true\)/);
+  assert.match(source,/event\.stopImmediatePropagation\(\);\s*returnToResults\(\)/);
+});
