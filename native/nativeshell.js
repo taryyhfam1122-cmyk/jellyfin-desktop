@@ -1344,7 +1344,10 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         try {
             const volume = Number(activePlayer.getVolume());
             if (!Number.isFinite(volume)) return;
-            const value = Math.max(0, Math.min(100, volume + (e.deltaY < 0 ? 5 : -5)));
+            // Jellyfin playback progress expects an integer VolumeLevel. A fractional
+            // volume can make the server reject progress reports (HTTP 400),
+            // preventing watched history from being recorded.
+            const value = Math.round(Math.max(0, Math.min(100, volume + (e.deltaY < 0 ? 5 : -5))));
             activePlayer.setVolume(value);
             log('volume changed', {volume: value});
         } catch (err) { log('volume change failed', {message: String(err)}); }
