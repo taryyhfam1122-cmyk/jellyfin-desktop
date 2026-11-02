@@ -35,16 +35,6 @@ jobs:
             vc_redist_arch: x64
             vcvars: vcvars64.bat
             machine: X64
-          # Surface Pro on Windows ARM can run this x64 build via Windows emulation.
-          # The app's existing Surface touch gestures are included. This is
-          # a separate downloadable package, not a native ARM64 binary.
-          - artifact: surface-x64-emulation
-            qt_arch: win64_msvc2022_64
-            mpv_arch: x86_64-v3
-            mpv_arch_fallback: x86_64
-            vc_redist_arch: x64
-            vcvars: vcvars64.bat
-            machine: X64
           # ARM64 disabled - requires qt webengine builds
           # - artifact: windows-arm64
           #   qt_arch: win64_msvc2022_arm64
@@ -148,17 +138,17 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-searchhub-v25-searchhub-navigation-validation
+        name: ${{ matrix.artifact }}-searchhub-v28-desktop-navigation-validation
         path: build/portable-validation/
         if-no-files-found: ignore
     - name: Archive installer
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-searchhub-v25-searchhub-navigation-installer
+        name: ${{ matrix.artifact }}-searchhub-v28-desktop-navigation-installer
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.exe
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-searchhub-v25-searchhub-navigation-portable
+        name: ${{ matrix.artifact }}-searchhub-v28-desktop-navigation-portable
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.zip
         if-no-files-found: error
