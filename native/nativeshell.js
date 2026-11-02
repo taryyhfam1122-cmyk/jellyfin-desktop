@@ -1314,18 +1314,18 @@ window.jmpInfo.settingsUpdate.push(function(section) {
             // A movie started from SearchHub returns to its exact works list.
             // Other movies preserve the desktop's original Stop -> Home behavior.
             const fromSearchHub = window.__jfdDesktopSearchHub?.hasPendingReturn?.() === true;
-            stopPlayback();
-            if (fromSearchHub) {
-                // Restore the saved SearchHub works list directly. Do not
-                // navigate Home first: doing so can tear down the saved route
-                // before the SearchHub return callback gets a chance to run.
-                const restore = () => window.__jfdDesktopSearchHub?.returnToResults?.() === true;
-                setTimeout(() => {
-                    if (!restore()) window.location.hash='#/home';
-                }, 350);
-            } else {
-                window.location.hash='#/home';
-            }
+            void stopPlayback().then(() => {
+                if (fromSearchHub) {
+                    // Allow Jellyfin to finish reporting playback before
+                    // restoring the overlay and its previous list position.
+                    setTimeout(() => {
+                        if (window.__jfdDesktopSearchHub?.returnToResults?.() !== true)
+                            window.location.hash='#/home';
+                    }, 350);
+                } else {
+                    window.location.hash='#/home';
+                }
+            });
         }
     }, true);
     window.addEventListener('auxclick', e => {
@@ -1411,9 +1411,13 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     }
     function stopPlayback() {
         const ctx = getContext();
-        if(ctx.error || !ctx.manager?.stop) return;
+        if(ctx.error || !ctx.manager?.stop) return Promise.resolve(false);
         cancelTouch(); resetDrag(); clearTimeout(singleClickTimer);
-        Promise.resolve(ctx.manager.stop(ctx.player)).catch(err=>log('stop failed',{error:String(err)}));
+        // Wait for Jellyfin's normal stop/reporting lifecycle before changing
+        // routes; navigating away early can lose the recent-playback entry.
+        return Promise.resolve(ctx.manager.stop(ctx.player))
+            .then(()=>true)
+            .catch(err=>{log('stop failed',{error:String(err)});return false;});
     }
     function touchButton(show) {
         if(!show){ if(stopButton) stopButton.style.display='none'; return; }
@@ -2328,6 +2332,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     const activeUser=state.api.getCurrentUserId();
     if(state.userId && state.userId!==activeUser){state.libraries=[];state.fetchedMoviesKey='';state.fetchedPersonsKey='';}
     state.userId=activeUser;state.opened=true;
+    searchOverlayHash=window.location.hash || '#/home';
     ensureStyle();const root=document.createElement('div');root.id=ID;
     root.setAttribute('role','dialog');root.setAttribute('aria-label','Jellyfin検索ハブ');root.setAttribute('aria-modal','true');
     document.body.appendChild(root);
@@ -2348,6 +2353,16 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if (state.detail) backToParentList();
     return true; // The search overlay stays open even on its top-level list.
   }
+  // Native WebView/browser Back may navigate the underlying Jellyfin page
+  // rather than clicking the SearchHub overlay's own back button.
+  function handleNativeSearchBack(event) {
+    if (!state.opened || !state.detail) return;
+    if (event?.cancelable) event.preventDefault();
+    handleSearchBack();
+    if (window.location.hash !== searchOverlayHash)
+      window.location.hash = searchOverlayHash;
+  }
+  let searchOverlayHash = '#/home';
   function installSearchSwipe(root) {
     let touchStart=null, pointerStart=null, lastHandledAt=-Infinity;
     const ignored = target => Boolean(target?.closest?.(
@@ -2601,10 +2616,10 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if(evt.target.id==='jfsh-genres'){state.detailGenres=evt.target.value;state.page=1;draw();}
   });
   document.addEventListener('keydown',evt=>{if(evt.key==='Escape'&&state.opened)close();});
+  window.addEventListener('popstate',handleNativeSearchBack);
   window.addEventListener('hashchange',()=>{
     if (state.opened) {
-      // Do not close SearchHub on a trackpad/Windows browser-back gesture.
-      handleSearchBack();
+      if (state.detail) handleNativeSearchBack();
       return;
     }
     restoreNativePointer();updateReturnButton();
