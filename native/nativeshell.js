@@ -2641,7 +2641,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     // Jellyfin's own toolbar Back uses router navigation, not XBUTTON1.
     // When it leaves a SearchHub-opened detail page, restore the saved works.
     if (lastSelection && !playbackVisible() &&
-        !/\\/details(?:[?\\/]|$)/i.test(window.location.hash)) {
+        !/\/details(?:[?\/]|$)/i.test(window.location.hash)) {
       const api=currentApi();
       if (api && api.getCurrentUserId()===lastSelection.userId) {
         returnToResults();
@@ -2654,7 +2654,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   // handler navigates to Home. This applies only to SearchHub detail pages.
   document.addEventListener('click',event=>{
     if (!lastSelection || state.opened || playbackVisible()) return;
-    if (!/\\/details(?:[?\\/]|$)/i.test(window.location.hash)) return;
+    if (!/\/details(?:[?\/]|$)/i.test(window.location.hash)) return;
     const target=event.target?.closest?.(
       '.headerBackButton,.btnBack,.backButton,.navBack,.btnBackButton,[data-action="back"],[is="emby-button"].headerButtonLeft');
     if (!target || target.closest('#jfsh-return-to-cast')) return;
