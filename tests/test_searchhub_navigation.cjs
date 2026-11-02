@@ -514,3 +514,44 @@ test('v33 restores works before route change, with saved actress parent state',(
   assert.equal(restoredCursor,1);
   assert.ok(updates>0);
 });
+
+test('v33 one mouse Back on detail never immediately consumes next works-to-actress Back',()=>{
+  const start=source.indexOf('// BEGIN JFD_SEARCHHUB_BACK_COMPAT_V33');
+  const end=source.indexOf('// END JFD_SEARCHHUB_BACK_COMPAT_V33',start);
+  assert.ok(start>0 && end>start);
+  const listeners={};
+  let now=1000,worksBack=null,worksClicks=0;
+  const fakeDate={now:()=>now};
+  const root={querySelector(){return worksBack;}};
+  const doc={
+    getElementById:id=>id==='jfsh-v1'&&worksBack?root:null,
+    addEventListener(type,fn){(listeners[type] ||= []).push(fn);}
+  };
+  const win={
+    location:{hash:'#/details?id=abcdefabcdefabcdefabcdefabcdefab'},
+    __jfdDesktopSearchPlaybackV32:{selectedId:()=> 'abcdefabcdefabcdefabcdefabcdefab'},
+    addEventListener(type,fn){(listeners[type] ||= []).push(fn);}
+  };
+  new Function('window','document','Date',source.slice(start,end))(
+    win,doc,fakeDate);
+  function send(type){
+    const evt={button:3,preventDefault(){this.prevented=true;},
+      stopImmediatePropagation(){this.stopped=true;}};
+    for(const handler of listeners[type]||[]) handler(evt);
+    return evt;
+  }
+  const first=send('pointerdown');
+  assert.equal(first.prevented,undefined,'detail Back still reaches Jellyfin');
+  // Jellyfin's detail Back restores SearchHub works during pointerdown.
+  worksBack={click(){worksClicks++;worksBack=null;}};
+  win.location.hash='#/home';
+  for(const type of ['mousedown','mouseup','auxclick']){
+    const evt=send(type);
+    assert.equal(evt.prevented,true,'compatibility event suppressed');
+    assert.equal(evt.stopped,true);
+  }
+  assert.equal(worksClicks,0,'restored works list must stay on screen');
+  now+=900;
+  send('pointerdown');
+  assert.equal(worksClicks,1,'second distinct Back returns to actress');
+});
