@@ -1637,7 +1637,7 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     if (!document.head || document.getElementById('jfsh-launch-center-v16')) return;
     const style = document.createElement('style');
     style.id = 'jfsh-launch-center-v16';
-    style.textContent = '#jfsh-launch {top:88px!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;}';
+    style.textContent = '#jfsh-launch {top:180px!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;}';
     document.head.appendChild(style);
   };
   apply();
@@ -1645,6 +1645,110 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     document.addEventListener('DOMContentLoaded', apply, {once:true});
 })();
 // END CHATGPT_SEARCHHUB_CENTER_LAUNCH_V16
+// BEGIN JFD_DESKTOP_PLAYBACK_UI_V23
+// Also applies when the server's JavaScript Injector registers SearchHub first.
+(() => {
+  const STYLE='jfd-desktop-playback-ui-v23';
+  const ACTIVE='jfd-desktop-playback-active';
+  function visible(el) {
+    if (!el || !el.isConnected) return false;
+    const r=el.getBoundingClientRect();
+    if (!r || r.width<120 || r.height<90) return false;
+    const css=getComputedStyle(el);
+    return css.visibility!=='hidden' && css.display!=='none';
+  }
+  function isPlaying() {
+    try { if (window.__jfdDesktopPlayerActive?.() === true) return true; }
+    catch (_) {}
+    if (/\/(?:video|player)(?:[/?]|$)/i.test(window.location.hash)) return true;
+    // Jellyfin may render a player overlay without changing the #/home route.
+    if ([...document.querySelectorAll('.videoPlayerContainer video,video')].some(v =>
+      visible(v) && (v.readyState>0 || (Number.isFinite(v.duration) && v.duration>0)))) return true;
+    return [...document.querySelectorAll('#videoOsdPage,.videoOsdPage,.videoPlayerContainer')].some(visible);
+  }
+  function ensureStyle() {
+    if (!document.head || document.getElementById(STYLE)) return;
+    const style=document.createElement('style');
+    style.id=STYLE;
+    style.textContent='body.'+ACTIVE+' #jfsh-launch,body.'+ACTIVE+' #jfsh-return-to-cast {'+
+      'display:none!important;visibility:hidden!important;pointer-events:none!important;}';
+    document.head.appendChild(style);
+  }
+  function sync() {
+    ensureStyle();
+    if (!document.body) return;
+    const active=isPlaying();
+    if (document.body.classList.contains(ACTIVE)!==active)
+      document.body.classList.toggle(ACTIVE,active);
+  }
+  window.__jfdDesktopPlaybackUI=Object.freeze({isPlaying,sync});
+  sync();
+  if (document.readyState==='loading')
+    document.addEventListener('DOMContentLoaded',sync,{once:true});
+  window.addEventListener('hashchange',sync);
+  document.addEventListener('playing',sync,true);
+  document.addEventListener('loadedmetadata',sync,true);
+  document.addEventListener('emptied',sync,true);
+  document.addEventListener('ended',sync,true);
+  setInterval(sync,400);
+})();
+// END JFD_DESKTOP_PLAYBACK_UI_V23
+// BEGIN JFD_DESKTOP_LAUNCHER_RECOVERY_V23
+// Keep a launcher available after the SearchHub close button, even when a
+// Jellyfin server-side Injector owns the main SearchHub registration.
+(() => {
+  const BUTTON_ID='jfsh-launch';
+  const SEARCH_ID='jfsh-v1';
+  const STYLE_ID='jfd-desktop-launcher-v23';
+  function ensureLauncherStyle() {
+    if (!document.head || document.getElementById(STYLE_ID)) return;
+    const style=document.createElement('style');
+    style.id=STYLE_ID;
+    style.textContent='#jfsh-launch {top:180px!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;}';
+    document.head.appendChild(style);
+  }
+  function ready() {
+    const api=window.ApiClient;
+    try {
+      return Boolean(api && typeof api.getCurrentUserId==='function' &&
+        api.getCurrentUserId() && typeof api.fetch==='function' &&
+        typeof api.getUrl==='function');
+    } catch (_) { return false; }
+  }
+  function repairLauncher() {
+    ensureLauncherStyle();
+    if (!document.body) return false;
+    const searchOpen=Boolean(document.getElementById(SEARCH_ID));
+    const playing=window.__jfdDesktopPlaybackUI?.isPlaying?.()===true;
+    const hidden=searchOpen || playing || Boolean(document.fullscreenElement);
+    let button=document.getElementById(BUTTON_ID);
+    if (!ready()) {
+      if(button) button.style.display='none';
+      return false;
+    }
+    if (!button && !hidden) {
+      button=document.createElement('button');
+      button.id=BUTTON_ID;
+      button.type='button';
+      button.textContent='🔎 検索一覧';
+      button.title='女優・シリーズ・ジャンル一覧';
+      document.body.appendChild(button);
+    }
+    if(button) {
+      // Inline !important wins over an older server-side Injector's 88px rule.
+      button.style.setProperty('top','180px','important');
+      button.style.display=hidden?'none':'';
+    }
+    return Boolean(button && !hidden);
+  }
+  window.__jfdDesktopLauncher=Object.freeze({repair:repairLauncher});
+  repairLauncher();
+  if(document.readyState==='loading')
+    document.addEventListener('DOMContentLoaded',repairLauncher,{once:true});
+  window.addEventListener('hashchange',repairLauncher);
+  setInterval(repairLauncher,500);
+})();
+// END JFD_DESKTOP_LAUNCHER_RECOVERY_V23
 // BEGIN CHATGPT_JELLYFIN_SEARCHHUB_V15
 if (typeof document !== 'undefined' && typeof window !== 'undefined') {
 // Read-only cast / series / genre panel. The shared global guard avoids
@@ -2137,8 +2241,8 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     if(document.getElementById(STYLE_ID))return;
     const s=document.createElement('style');s.id=STYLE_ID;
     s.textContent=`
-    #jfsh-launch {position:fixed;top:88px;left:50%;right:auto;transform:translateX(-50%);z-index:4100;border:1px solid #3b526b;background:#172b47;color:#fff;border-radius:24px;padding:11px 18px;font-size:14px;font-weight:700;box-shadow:0 6px 24px #0008;cursor:pointer}
-    #jfsh-launch:hover{background:#234e77}#${ID}{position:fixed;inset:0;z-index:990000;background:#0b111bed;color:#eef4ff;overflow:auto;overscroll-behavior:contain;font:14px/1.5 system-ui,sans-serif}
+    #jfsh-launch {position:fixed;top:180px;left:50%;right:auto;transform:translateX(-50%);z-index:4100;border:1px solid #3b526b;background:#172b47;color:#fff;border-radius:24px;padding:11px 18px;font-size:14px;font-weight:700;box-shadow:0 6px 24px #0008;cursor:pointer}
+    #jfsh-launch:hover{background:#234e77}#${ID}{position:fixed;inset:0;z-index:990000;background:#0b111bed;color:#eef4ff;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;font:14px/1.5 system-ui,sans-serif}
     #${ID} * {box-sizing:border-box}#${ID} button,#${ID} select,#${ID} input{font:inherit}#${ID} .jfsh-shell{width:100%;max-width:2000px;margin:auto;padding:24px 16px 90px}
     #${ID} .jfsh-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}#${ID} h2{font-size:24px;margin:0;font-weight:750;flex:1}
     #${ID} .jfsh-close,#${ID} .jfsh-reload{padding:8px 15px;border-radius:9px;background:#26354c;color:white;border:1px solid #536078;cursor:pointer}
@@ -2177,7 +2281,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     #${ID} .jfsh-detailhead span{color:#b9cede;font-size:13px}#${ID} .jfsh-back,#${ID} .jfsh-more{border:1px solid #496482;background:#1c3853;color:#fff;padding:10px 17px;border-radius:10px;cursor:pointer}
     #${ID} .jfsh-more{display:block;margin:25px auto;padding:14px 38px}#${ID} .jfsh-filters{margin:15px 0}
     @media(max-width:950px){#${ID} .jfsh-people{grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:12px}}
-    @media(max-width:650px){#jfsh-launch{top:72px;right:9px;padding:8px 12px}#${ID} .jfsh-shell{padding:15px 12px 65px}#${ID} h2{font-size:20px}#${ID} .jfsh-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}#${ID} .jfsh-people{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}#${ID} .jfsh-name{font-size:12px;padding:6px}#${ID} .jfsh-people .jfsh-name{font-size:13px;min-height:34px}#${ID} .jfsh-page{min-width:37px;min-height:40px;padding:7px}#${ID} .jfsh-page-step{min-width:69px}#${ID} .jfsh-catgrid{grid-template-columns:1fr 1fr;gap:8px}#${ID} .jfsh-category{padding:12px 9px;flex-wrap:wrap}#${ID} .jfsh-category small{width:100%}}
+    @media(max-width:650px){#jfsh-launch{top:180px;right:auto;padding:8px 12px}#${ID} .jfsh-shell{padding:15px 12px 65px}#${ID} h2{font-size:20px}#${ID} .jfsh-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}#${ID} .jfsh-people{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}#${ID} .jfsh-name{font-size:12px;padding:6px}#${ID} .jfsh-people .jfsh-name{font-size:13px;min-height:34px}#${ID} .jfsh-page{min-width:37px;min-height:40px;padding:7px}#${ID} .jfsh-page-step{min-width:69px}#${ID} .jfsh-catgrid{grid-template-columns:1fr 1fr;gap:8px}#${ID} .jfsh-category{padding:12px 9px;flex-wrap:wrap}#${ID} .jfsh-category small{width:100%}}
     `;document.head.appendChild(s);
   }
   function setStatus() {
