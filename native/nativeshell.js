@@ -1488,7 +1488,13 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         cancelTouch(); resetDrag(); clearTimeout(singleClickTimer);
         // Capture a real current position before the player clears it.
         // SearchHub is the only playback path eligible for the fallback.
-        const itemId=window.__jfdDesktopSearchHub?.pendingPlaybackItemId?.();
+        const expectedItemId=window.__jfdDesktopSearchHub?.pendingPlaybackItemId?.();
+        const playingItemId=ctx.player._currentPlayOptions?.item?.Id;
+        // The user may have navigated to another player item after opening
+        // SearchHub. Never update metadata for the wrong item.
+        const itemId=typeof playingItemId==='string' && typeof expectedItemId==='string' &&
+            playingItemId.toLowerCase()===expectedItemId.toLowerCase()
+            ? expectedItemId : null;
         const positionMs=Number(ctx.player.currentTime?.());
         const durationMs=Number(ctx.player.duration?.());
         const options=ctx.player._currentPlayOptions;
