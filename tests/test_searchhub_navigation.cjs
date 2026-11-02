@@ -266,11 +266,11 @@ test('SearchHub detail Back recognizes mouse and accessible controls, never Home
   assert.equal(back({closest:()=>null}),false);
 });
 
-test('Desktop home header aligns SearchHub beside Home/Favorites, never over posters',()=>{
-  assert.match(source,/top:23px!important;left:calc\\(50% \\+ 108px\\)!important/);
-  assert.match(source,/button\\.style\\.setProperty\\('top','23px','important'\\)/);
-  assert.match(source,/button\\.style\\.setProperty\\('left','calc\\(50% \\+ 108px\\)','important'\\)/);
-  assert.doesNotMatch(source,/top:180px!important/);
+test('Desktop header places SearchHub next to Home/Favorites, not posters',()=>{
+  assert.ok(source.includes('top:23px!important;left:calc(50% + 108px)!important'));
+  assert.ok(source.includes("button.style.setProperty('top','23px','important')"));
+  assert.ok(source.includes("button.style.setProperty('left','calc(50% + 108px)','important')"));
+  assert.ok(!source.includes('top:180px!important'));
 });
 
 test('SearchHub uses server-confirmed resume before any official stop fallback',async()=>{
