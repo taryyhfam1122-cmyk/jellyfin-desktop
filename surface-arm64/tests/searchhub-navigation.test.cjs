@@ -289,3 +289,16 @@ test('v22 SearchHub close action invokes launcher recovery immediately',()=>{
   assert.equal(repaired,1);
   assert.equal(doc.documentElement.style.overflow,'auto');
 });
+
+test('v23 native Surface Back restores cached actress works from detail',()=>{
+  assert.match(source,/function returnFromDetail\(\)/);
+  assert.match(source,/returnFromDetail\(\) \{ return returnFromDetail\(\); \}/);
+  assert.match(source,/if \(lastSelection && !playbackVisible\(\) &&/);
+  assert.match(source,/!window\.location\.hash\.includes\('\/details'\)/);
+  assert.match(native,/window\.__jfdSurfaceSearchHub\?\.returnFromDetail\?\.\(\)/);
+});
+
+test('v23 Surface volume is quantized to whole percent for playback reporting',()=>{
+  const controls = readFileSync(join(__dirname,'../controls.js'),'utf8');
+  assert.match(controls,/Math\.round\(clamp\(g\.volume-dy\/\(innerHeight\*\.6\),1\)\*100\)\/100/);
+});
