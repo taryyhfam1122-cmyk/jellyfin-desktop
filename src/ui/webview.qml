@@ -203,23 +203,32 @@ Window
     when: !components.settings.allowBrowserZoom()
   }
 
-  MpvVideoItem
+  // ARM64 HTML5 playback keeps Qt Quick on D3D11 and avoids creating the
+  // native OpenGL-only video item until an explicit native-mpv diagnostic run.
+  Loader
   {
-    id: video
-    objectName: "video"
-    enabled: true
+    id: nativeVideoLoader
+    active: !arm64WebFallback
+    anchors.fill: parent
+    sourceComponent: Component {
+      MpvVideoItem
+      {
+        id: video
+        objectName: "video"
+        enabled: true
+        width: mainWindow.contentItem.width
+        height: mainWindow.contentItem.height
+        anchors.left: mainWindow.contentItem.left
+        anchors.right: mainWindow.contentItem.right
+        anchors.top: mainWindow.contentItem.top
 
-    width: mainWindow.contentItem.width
-    height: mainWindow.contentItem.height
-    anchors.left: mainWindow.contentItem.left
-    anchors.right: mainWindow.contentItem.right
-    anchors.top: mainWindow.contentItem.top
-
-    Component.onCompleted: {
-      console.log("MpvVideoItem size:", width, "x", height, "visible:", visible)
+        Component.onCompleted: {
+          console.log("MpvVideoItem size:", width, "x", height, "visible:", visible)
+        }
+        onWidthChanged: console.log("MpvVideoItem width changed:", width)
+        onHeightChanged: console.log("MpvVideoItem height changed:", height)
+      }
     }
-    onWidthChanged: console.log("MpvVideoItem width changed:", width)
-    onHeightChanged: console.log("MpvVideoItem height changed:", height)
   }
 
   WebEngineView

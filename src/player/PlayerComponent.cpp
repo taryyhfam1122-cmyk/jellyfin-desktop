@@ -237,6 +237,14 @@ void PlayerComponent::setVideoRectangle(int x, int y, int w, int h)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setQtQuickWindow(QQuickWindow* window)
 {
+#if defined(Q_OS_WIN) && defined(_M_ARM64)
+  if (qEnvironmentVariableIntValue("JFD_ARM64_NATIVE_MPV") != 1)
+  {
+    // The QML Loader omits MpvVideoItem in HTML5/D3D11 mode.
+    qInfo() << "ARM64 HTML5 fallback: bypassing native mpv video item";
+    return;
+  }
+#endif
   qDebug() << "PlayerComponent::setQtQuickWindow called";
   MpvVideoItem* video = window->findChild<MpvVideoItem*>("video");
   if (!video) {

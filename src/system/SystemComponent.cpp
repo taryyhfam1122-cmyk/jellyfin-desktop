@@ -577,7 +577,19 @@ QString SystemComponent::getNativeShellScript()
   }
   clientData.insert("sections", QJsonValue::fromVariant(SettingsComponent::Get().orderedSections()));
   clientData.insert("settingsDescriptions", QJsonValue::fromVariant(settingsDescriptions));
-  clientData.insert("settings", QJsonValue::fromVariant(SettingsComponent::Get().allValues()));
+  // Browser playback on ARM64: do not advertise a native mpv plugin when
+  // there is no OpenGL renderer. Only change this session, not saved settings.
+  QVariantMap runtimeSettings = SettingsComponent::Get().allValues();
+#if defined(Q_OS_WIN) && defined(_M_ARM64)
+  if (qEnvironmentVariableIntValue("JFD_ARM64_NATIVE_MPV") != 1)
+  {
+    QVariantMap mainSettings = runtimeSettings.value("main").toMap();
+    mainSettings.insert("enableMPV", false);
+    runtimeSettings.insert("main", mainSettings);
+    qInfo() << "ARM64 HTML5 fallback: disabled native mpv web client plugins";
+  }
+#endif
+  clientData.insert("settings", QJsonValue::fromVariant(runtimeSettings));
 
   QString jmpInfoDeclaration = "const jmpInfo = JSON.parse(window.atob(\"" +
                                 QJsonDocument(clientData).toJson(QJsonDocument::Compact).toBase64() +

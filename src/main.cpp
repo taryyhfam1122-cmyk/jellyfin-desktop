@@ -239,7 +239,19 @@ int main(int argc, char *argv[])
     }
 
     detectOpenGLEarly();
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+    // The native mpv item needs an OpenGL render context. On Windows ARM64
+    // some drivers fail to create that context and the mpv renderer aborts.
+    // Default to the HTML5 player with D3D11; set JFD_ARM64_NATIVE_MPV=1
+    // to explicitly test native ARM64 mpv again.
+#if defined(Q_OS_WIN) && defined(_M_ARM64)
+    const bool arm64WebFallback = qEnvironmentVariableIntValue("JFD_ARM64_NATIVE_MPV") != 1;
+#else
+    const bool arm64WebFallback = false;
+#endif
+    if (arm64WebFallback)
+      QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
+    else
+      QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 
     if (parser.isSet("help"))
@@ -530,6 +542,8 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine *engine = Globals::Engine();
 
     Globals::SetContextProperty("components", &ComponentManager::Get().getQmlPropertyMap());
+    Globals::SetContextProperty("arm64WebFallback", arm64WebFallback);
+    qInfo() << "ARM64 HTML5 playback fallback enabled:" << arm64WebFallback;
 
     // the only way to detect if QML parsing fails is to hook to this signal and then see
     // if we get a valid object passed to it. Any error messages will be reported on stderr
