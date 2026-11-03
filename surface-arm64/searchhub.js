@@ -5,6 +5,99 @@
 (() => {
   'use strict';
   if (location.origin !== "__JFD_SERVER_ORIGIN__") return;
+// BEGIN JFD_SURFACE_SEARCH_FLOATING_NAV_V28
+// Independent of the global SearchHub guard: also works if Jellyfin's own
+// JavaScript Injector registers the search panel before this native client.
+(() => {
+  'use strict';
+  if (window.__jfdSurfaceSearchNavV28) return;
+  const ID='jfd-surface-search-nav-v28';
+  const STYLE='jfd-surface-search-nav-style-v28';
+  let dock=null;
+  function action(name) {
+    const root=document.getElementById('jfsh-v1');
+    if(!root)return;
+    if(name==='close') {
+      const control=root.querySelector('[data-act="close"],.jfsh-close');
+      if(control)control.click();
+      else window.__jfdSurfaceSearchHub?.closeSearch?.();
+    } else if(name==='back') {
+      root.querySelector('[data-act="back"]')?.click();
+    } else if(name==='top' || name==='bottom') {
+      const target=name==='top'?0:root.scrollHeight;
+      if(typeof root.scrollTo==='function')root.scrollTo({top:target,behavior:'smooth'});
+      else root.scrollTop=target;
+    }
+    sync();
+  }
+  function ensure() {
+    if(!document.body || !document.head)return;
+    if(!document.getElementById(STYLE)) {
+      const style=document.createElement('style');
+      style.id=STYLE;
+      style.textContent=[
+        '#'+ID+'{position:fixed;inset:0;z-index:990100;pointer-events:none;display:none;}',
+        '#'+ID+' button{position:absolute;pointer-events:auto;min-width:118px;min-height:52px;',
+        'padding:10px 16px;border:1px solid #5d94b8;border-radius:12px;',
+        'background:#153c59;color:#fff;font:700 16px system-ui,sans-serif;',
+        'box-shadow:0 4px 15px #0009;cursor:pointer;touch-action:manipulation;}',
+        '#'+ID+' button:active,#'+ID+' button:focus-visible{background:#2475a2;outline:2px solid #8adaff;}',
+        '#'+ID+' .jfd-nav-close{right:16px;top:16px;}',
+        '#'+ID+' .jfd-nav-top{right:16px;top:84px;}',
+        '#'+ID+' .jfd-nav-bottom{right:16px;bottom:20px;}',
+        '#'+ID+' .jfd-nav-back{left:50%;bottom:20px;transform:translateX(-50%);min-width:160px;}',
+        '@media(max-width:650px){#'+ID+' button{font-size:14px;min-width:104px;min-height:48px;',
+        'padding:9px 12px;}#'+ID+' .jfd-nav-top{top:76px;}}'
+      ].join('');
+      document.head.appendChild(style);
+    }
+    dock=document.getElementById(ID);
+    if(dock)return;
+    dock=document.createElement('div');
+    dock.id=ID;
+    dock.setAttribute('aria-label','検索一覧の移動');
+    const make=(cls,label,name)=>{
+      const button=document.createElement('button');
+      button.type='button';
+      button.className=cls;
+      button.dataset.nav=name;
+      button.textContent=label;
+      button.setAttribute('aria-label',label);
+      button.addEventListener('click',event=>{
+        event.preventDefault();
+        event.stopPropagation();
+        action(name);
+      });
+      dock.appendChild(button);
+    };
+    make('jfd-nav-close','✕ 閉じる','close');
+    make('jfd-nav-top','↑ 上部へ','top');
+    make('jfd-nav-bottom','↓ 下部へ','bottom');
+    make('jfd-nav-back','← 一覧へ戻る','back');
+    document.body.appendChild(dock);
+  }
+  function sync() {
+    ensure();
+    if(!dock)return;
+    const root=document.getElementById('jfsh-v1');
+    const visible=!!root && root.getClientRects().length>0 &&
+      getComputedStyle(root).display!=='none' &&
+      getComputedStyle(root).visibility!=='hidden';
+    dock.style.display=visible?'block':'none';
+    if(!visible)return;
+    const back=dock.querySelector('[data-nav="back"]');
+    if(back)back.style.display=root.querySelector('[data-act="back"]')?'block':'none';
+  }
+  window.__jfdSurfaceSearchNavV28=Object.freeze({sync});
+  if(document.readyState==='loading')
+    document.addEventListener('DOMContentLoaded',sync,{once:true});
+  window.addEventListener('hashchange',sync);
+  sync();
+  // SearchHub may be opened/closed by the server-side Injector or by a native
+  // button. Poll only the panel presence, not library data or media state.
+  setInterval(sync,450);
+})();
+// END JFD_SURFACE_SEARCH_FLOATING_NAV_V28
 // BEGIN CHATGPT_SEARCHHUB_CENTER_LAUNCH_V16
 // Independent of the SearchHub global guard: the server's Injector may load first.
 (() => {
