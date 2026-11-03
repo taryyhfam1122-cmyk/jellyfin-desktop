@@ -73,7 +73,11 @@ endif()
 
 # Bundle MSVC runtime DLLs (pre-extracted by setup-windows.bat)
 set(VCRUNTIME_DIR "@PROJECT_SOURCE_DIR@/deps/vcruntime")
-set(VCREDIST_EXE "@PROJECT_SOURCE_DIR@/deps/vc_redist.x64.exe")
+set(VCREDIST_ARCH "@VCREDIST_ARCH@")
+if(NOT VCREDIST_ARCH)
+  set(VCREDIST_ARCH "x64")
+endif()
+set(VCREDIST_EXE "@PROJECT_SOURCE_DIR@/deps/vc_redist.${VCREDIST_ARCH}.exe")
 
 if(EXISTS "${VCRUNTIME_DIR}" AND EXISTS "${VCREDIST_EXE}")
   # Copy runtime DLLs to redist subfolder
@@ -87,7 +91,7 @@ if(EXISTS "${VCRUNTIME_DIR}" AND EXISTS "${VCREDIST_EXE}")
 
   # Copy VCRedist installer for bundling
   file(INSTALL "${VCREDIST_EXE}" DESTINATION "${CMAKE_INSTALL_PREFIX}")
-  message(STATUS "Bundled VCRedist installer: vc_redist.x64.exe")
+  message(STATUS "Bundled VCRedist installer: vc_redist.${VCREDIST_ARCH}.exe")
 else()
   message(WARNING "VCRuntime DLLs not found. Run setup-windows.bat first.")
 endif()
