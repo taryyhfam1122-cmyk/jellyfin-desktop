@@ -27,12 +27,15 @@ add_custom_target(innosetup_install
 )
 
 # Determine architecture string for output filename
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|arm64|aarch64|AARCH64)$" OR ARCHSTR MATCHES "^(arm64|aarch64)$")
+if(VCREDIST_ARCH STREQUAL "arm64")
   set(INSTALLER_ARCH_STR arm64)
+  set(INSTALLER_ARCH_CONSTRAINT arm64)
 elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(INSTALLER_ARCH_STR x64)
+  set(INSTALLER_ARCH_CONSTRAINT x64compatible)
 else()
   set(INSTALLER_ARCH_STR x86)
+  set(INSTALLER_ARCH_CONSTRAINT x86compatible)
 endif()
 
 configure_file(
