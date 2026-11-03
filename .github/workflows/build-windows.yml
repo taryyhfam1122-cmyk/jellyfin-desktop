@@ -155,17 +155,43 @@ jobs:
         cd build
         set PATH=%PATH%;C:\Program Files (x86)\Inno Setup 6;%CD%
         set "QT_ROOT_DIR=%QT_ROOT_DIR:\=/%"
-        cmake -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=output -DQTROOT=%QT_ROOT_DIR% -DMPV_INCLUDE_DIR=mpv/include -DMPV_LIBRARY=mpv/libmpv-2.dll -DCHECK_FOR_UPDATES=ON -DUSE_STATIC_MPVQT=ON ..
+        cmake -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=output -DQTROOT=%QT_ROOT_DIR% -DQT_HOST_PATH=%QT_HOST_PATH% -DMPV_INCLUDE_DIR=mpv/include -DMPV_LIBRARY=mpv/libmpv-2.dll -DCHECK_FOR_UPDATES=ON -DUSE_STATIC_MPVQT=ON ..
         lib /def:mpv\mpv.def /out:mpv\libmpv-2.dll.lib /MACHINE:${{ matrix.machine }}
         ninja
         ninja windows_all
       shell: cmd
-    - name: Verify extracted Portable and smoke-test startup
+    - name: Verify extracted Portable and smoke-test startup (x64)
+      if: matrix.machine == 'X64'
       shell: powershell
       run: |
         $zip = Get-ChildItem build/JellyfinDesktop-*.zip | Select-Object -First 1
         if (-not $zip) { throw 'Portable ZIP was not generated' }
         ./scripts/VerifyPortable.ps1 -ZipPath $zip.FullName
+    - name: Verify portable PE architecture and WebEngine files (ARM64)
+      if: matrix.machine == 'ARM64'
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $zip = Get-ChildItem build/JellyfinDesktop-*.zip | Select-Object -First 1
+        if (-not $zip) { throw 'ARM64 portable ZIP was not generated' }
+        $stage = Join-Path $env:RUNNER_TEMP 'jfd-arm64-portable-check'
+        Expand-Archive -LiteralPath $zip.FullName -DestinationPath $stage -Force
+        foreach ($f in @('Jellyfin Desktop.exe','Qt6Core.dll','Qt6WebEngineCore.dll','libmpv-2.dll','QtWebEngineProcess.exe')) {
+          $file = Join-Path $stage $f
+          if (-not (Test-Path $file)) { throw "Missing ARM64 portable dependency: $f" }
+          $reader = [System.IO.BinaryReader]::new([System.IO.File]::OpenRead($file))
+          try {
+            $reader.BaseStream.Seek(0x3c, [System.IO.SeekOrigin]::Begin) | Out-Null
+            $peOffset = $reader.ReadInt32()
+            $reader.BaseStream.Seek($peOffset + 4, [System.IO.SeekOrigin]::Begin) | Out-Null
+            $machine = $reader.ReadUInt16()
+          } finally { $reader.Dispose() }
+          if ($machine -ne 0xAA64) { throw "$f is not ARM64 (PE machine 0x$($machine.ToString('X4')))" }
+        }
+        if (-not (Test-Path (Join-Path $stage 'qml/QtWebEngine'))) { throw 'QtWebEngine QML resources missing' }
+        $report = Join-Path $PWD 'build/portable-validation'
+        New-Item -ItemType Directory -Force $report | Out-Null
+        'PASS: required binaries are native ARM64; x64 runner cannot perform ARM64 startup test.' | Set-Content (Join-Path $report 'result.txt')
     - name: Archive Portable validation
       if: always()
       uses: actions/upload-artifact@v7
