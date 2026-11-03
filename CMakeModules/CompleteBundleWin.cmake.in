@@ -1,11 +1,34 @@
-set(PROJECT_SOURCE_DIR @PROJECT_SOURCE_DIR@)
+set(PROJECT_SOURCE_DIR "@PROJECT_SOURCE_DIR@")
 set(QTROOT "@QTROOT@")
+set(QT_HOST_PATH "@QT_HOST_PATH@")
 
-message(STATUS "Running windeployqt from: ${QTROOT}/bin/windeployqt.exe")
+# Native x64 Qt provides windeployqt inside the target kit. Cross-compiled
+# Windows ARM64 Qt provides it in the companion x64 host kit instead.
+set(WINDEPLOYQT "${QTROOT}/bin/windeployqt.exe")
+set(WINDEPLOYQT_EXTRA_ARGS "")
+if(NOT EXISTS "${WINDEPLOYQT}")
+  set(WINDEPLOYQT "${QT_HOST_PATH}/bin/windeployqt.exe")
+  if(NOT EXISTS "${WINDEPLOYQT}")
+    message(FATAL_ERROR "Missing host windeployqt: ${WINDEPLOYQT}")
+  endif()
+  set(TARGET_QTPATHS "")
+  foreach(CANDIDATE qtpaths6.bat qtpaths.bat qtpaths6.exe qtpaths.exe)
+    if(EXISTS "${QTROOT}/bin/${CANDIDATE}")
+      set(TARGET_QTPATHS "${QTROOT}/bin/${CANDIDATE}")
+      break()
+    endif()
+  endforeach()
+  if(NOT TARGET_QTPATHS)
+    message(FATAL_ERROR "Cannot find ARM64 target qtpaths in ${QTROOT}/bin")
+  endif()
+  list(APPEND WINDEPLOYQT_EXTRA_ARGS --qtpaths "${TARGET_QTPATHS}")
+  message(STATUS "Cross-deploying ARM64 Qt with target qtpaths: ${TARGET_QTPATHS}")
+endif()
+
+message(STATUS "Running windeployqt from: ${WINDEPLOYQT}")
 message(STATUS "Target: ${CMAKE_INSTALL_PREFIX}/Jellyfin Desktop.exe")
-
 execute_process(
-  COMMAND "${QTROOT}/bin/windeployqt.exe" --release --verbose 9 --qmldir "@PROJECT_SOURCE_DIR@/src/ui" "${CMAKE_INSTALL_PREFIX}/Jellyfin Desktop.exe"
+  COMMAND "${WINDEPLOYQT}" --release --verbose 9 ${WINDEPLOYQT_EXTRA_ARGS} --qmldir "@PROJECT_SOURCE_DIR@/src/ui" "${CMAKE_INSTALL_PREFIX}/Jellyfin Desktop.exe"
   RESULT_VARIABLE WINDEPLOYQT_RESULT
 )
 
