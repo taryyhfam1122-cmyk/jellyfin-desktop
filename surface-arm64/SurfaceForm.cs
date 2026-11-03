@@ -384,14 +384,14 @@ public sealed class SurfaceForm : Form
                             document.body.appendChild(btn);
                         }
                         const playing = window.__jfdSurfacePlaybackUI?.isPlaying?.() === true ||
-                            /\\/(?:video|player)(?:[/?]|$)/i.test(location.hash) ||
+                            (location.hash.includes('/video') || location.hash.includes('/player')) ||
                             Array.from(document.querySelectorAll('video')).some(v =>
                                 v.readyState > 0 && v.getBoundingClientRect().width > 120);
                         const open = !!document.getElementById('jfsh-v1');
                         const legacy = document.getElementById('jfsh-launch');
                         const legacyVisible = !!legacy && legacy.getClientRects().length > 0 &&
                             getComputedStyle(legacy).display !== 'none';
-                        const loggingIn = /\\/(?:login|selectserver|startupwizard)/i.test(location.hash);
+                        const loggingIn = ['/login', '/selectserver', '/startupwizard'].some(route => location.hash.includes(route));
                         btn.style.display = (playing || open || legacyVisible || loggingIn) ? 'none' : '';
                     }
                     refresh();
@@ -401,7 +401,7 @@ public sealed class SurfaceForm : Form
                 })();
                 """;
             _nativeSearchScriptId = await _browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
-                nativeSearchLauncher.Replace("\"__JFD_SERVER_ORIGIN\"",
+                nativeSearchLauncher.Replace("\"__JFD_SERVER_ORIGIN__\"",
                     JsonSerializer.Serialize(_server.Text), StringComparison.Ordinal));
             var preview = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "trickplay-preview.js"));
             var searchHub = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "searchhub.js"));
