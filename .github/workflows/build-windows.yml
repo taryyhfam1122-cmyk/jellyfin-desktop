@@ -26,6 +26,7 @@ jobs:
         include:
           - artifact: windows-x64
             qt_arch: win64_msvc2022_64
+            qt_version: '6.9.3'
             mpv_arch: x86_64-v3
             mpv_arch_fallback: x86_64
             vc_redist_arch: x64
@@ -33,6 +34,7 @@ jobs:
             machine: X64
           - artifact: windows-arm64
             qt_arch: win64_msvc2022_arm64_cross_compiled
+            qt_version: '6.10.0'
             mpv_arch: aarch64
             mpv_arch_fallback: ""
             vc_redist_arch: arm64
@@ -54,34 +56,48 @@ jobs:
         node --test tests/test_mouse_controls.cjs
         node --test tests/test_fullscreen_trickplay.cjs
         node --test tests/test_preview_v02.cjs
-    - name: Diagnose available Qt ARM64 packages
+    - name: Verify ARM64 Qt WebEngine packages exist
       if: matrix.machine == 'ARM64'
       shell: powershell
       run: |
+        $ErrorActionPreference = 'Stop'
         python -m pip install --upgrade aqtinstall
-        Write-Host "Qt version: ${{ env.QT_VERSION }}"
-        Write-Host "Requested architecture: ${{ matrix.qt_arch }}"
-        Write-Host "Available architectures:"
-        python -m aqt list-qt windows desktop --arch "${{ env.QT_VERSION }}"
-        Write-Host "Requested modules:"
-        python -m aqt list-qt windows desktop --modules "${{ env.QT_VERSION }}" "${{ matrix.qt_arch }}"
-    - name: Install Qt 6 (ARM64 with explicit diagnostics)
+        if ($LASTEXITCODE -ne 0) { throw "aqtinstall setup failed" }
+        Write-Host "Qt target: ${{ matrix.qt_version }} / ${{ matrix.qt_arch }}"
+        python -m aqt list-qt windows desktop --arch "${{ matrix.qt_version }}"
+        if ($LASTEXITCODE -ne 0) { throw "Could not list Qt architectures" }
+        $available = python -m aqt list-qt windows desktop --modules "${{ matrix.qt_version }}" "${{ matrix.qt_arch }}" 2>&1
+        $available | ForEach-Object { Write-Host $_ }
+        if ($LASTEXITCODE -ne 0) { throw "Could not list Qt ARM64 modules" }
+        $moduleNames = ($available -join ' ') -split '\s+'
+        foreach ($needed in @('qtwebengine','qtwebchannel','qtpositioning')) {
+          if ($needed -notin $moduleNames) { throw "Qt ${{ matrix.qt_version }} ARM64 package '$needed' is unavailable; cannot build native WebEngine app" }
+        }
+    - name: Install Qt 6 (ARM64 with x64 host tools)
       if: matrix.machine == 'ARM64'
       shell: powershell
       run: |
         $ErrorActionPreference = 'Stop'
         $qtRoot = Join-Path $env:GITHUB_WORKSPACE 'qt-arm64'
-        python -m aqt install-qt windows desktop "${{ env.QT_VERSION }}" "${{ matrix.qt_arch }}" --outputdir "$qtRoot" --modules qtwebengine qtwebchannel qtpositioning
-        if ($LASTEXITCODE -ne 0) { throw "Qt ARM64 installation failed with exit code $LASTEXITCODE. Check aqt error details above." }
-        $qtDir = Join-Path (Join-Path $qtRoot "${{ env.QT_VERSION }}") "${{ matrix.qt_arch }}"
-        if (-not (Test-Path $qtDir)) { throw "Qt ARM64 installation directory not found: $qtDir" }
+        python -m aqt install-qt windows desktop "${{ matrix.qt_version }}" "${{ matrix.qt_arch }}" --autodesktop --outputdir "$qtRoot" --modules qtwebengine qtwebchannel qtpositioning
+        if ($LASTEXITCODE -ne 0) { throw "Qt ARM64 installation failed with exit code $LASTEXITCODE" }
+        $qtDir = Join-Path (Join-Path $qtRoot "${{ matrix.qt_version }}") 'msvc2022_arm64'
+        $qtHost = Join-Path (Join-Path $qtRoot "${{ matrix.qt_version }}") 'msvc2022_64'
+        if (-not (Test-Path (Join-Path $qtDir 'lib/cmake/Qt6WebEngineCore/Qt6WebEngineCoreConfig.cmake'))) {
+          throw "ARM64 Qt WebEngineCore CMake package missing in $qtDir"
+        }
+        if (-not (Test-Path (Join-Path $qtHost 'lib/cmake/Qt6/Qt6Config.cmake'))) {
+          throw "x64 host Qt installation missing in $qtHost"
+        }
         "QT_ROOT_DIR=$qtDir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-        Write-Host "Installed Qt under $qtDir"
+        "QT_HOST_PATH=$qtHost" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        Write-Host "Qt ARM64 target: $qtDir"
+        Write-Host "Qt x64 host tools: $qtHost"
     - name: Install Qt 6 (x64)
       if: matrix.machine == 'X64'
       uses: jurplel/install-qt-action@v4
       with:
-        version: "${{ env.QT_VERSION }}"
+        version: "${{ matrix.qt_version }}"
         arch: "${{ matrix.qt_arch }}"
         modules: "qtwebengine qtwebchannel qtpositioning"
     - name: Install Inno Setup
