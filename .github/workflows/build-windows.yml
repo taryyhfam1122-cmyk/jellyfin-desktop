@@ -138,7 +138,7 @@ jobs:
         }
         Copy-Item "$vsRedist\*.dll" deps/vcruntime/
         # Also grab VCRedist installer for optional system-wide install
-        Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile deps/vc_redist.x64.exe
+        Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.${{ matrix.vc_redist_arch }}.exe" -OutFile "deps/vc_redist.${{ matrix.vc_redist_arch }}.exe"
       shell: powershell
     - name: Build
       run: |
@@ -155,7 +155,7 @@ jobs:
         cd build
         set PATH=%PATH%;C:\Program Files (x86)\Inno Setup 6;%CD%
         set "QT_ROOT_DIR=%QT_ROOT_DIR:\=/%"
-        cmake -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=output -DQTROOT=%QT_ROOT_DIR% -DQT_HOST_PATH=%QT_HOST_PATH% -DMPV_INCLUDE_DIR=mpv/include -DMPV_LIBRARY=mpv/libmpv-2.dll -DCHECK_FOR_UPDATES=ON -DUSE_STATIC_MPVQT=ON ..
+        cmake -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=output -DQTROOT=%QT_ROOT_DIR% -DQT_HOST_PATH=%QT_HOST_PATH% -DVCREDIST_ARCH=${{ matrix.vc_redist_arch }} -DMPV_INCLUDE_DIR=mpv/include -DMPV_LIBRARY=mpv/libmpv-2.dll -DCHECK_FOR_UPDATES=ON -DUSE_STATIC_MPVQT=ON ..
         lib /def:mpv\mpv.def /out:mpv\libmpv-2.dll.lib /MACHINE:${{ matrix.machine }}
         ninja
         ninja windows_all
