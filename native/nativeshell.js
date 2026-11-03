@@ -1902,7 +1902,8 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     if(!visible)return;
     const detail=!!root.querySelector('.jfsh-detailhead [data-act="back"]');
     back.hidden=!detail;
-    close.hidden=detail;
+    // Closing SearchHub must remain available on actress, works and category screens.
+    close.hidden=false;
     top.hidden=detail;
     bottom.hidden=detail;
     // The dock's [hidden] buttons must not inherit visibility from styling.
