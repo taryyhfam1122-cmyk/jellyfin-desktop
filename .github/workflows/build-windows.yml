@@ -61,7 +61,7 @@ jobs:
       shell: powershell
       run: |
         $ErrorActionPreference = 'Stop'
-        python -m pip install --upgrade aqtinstall
+        python -m pip install --upgrade git+https://github.com/miurahr/aqtinstall.git
         if ($LASTEXITCODE -ne 0) { throw "aqtinstall setup failed" }
         Write-Host "Qt target: ${{ matrix.qt_version }} / ${{ matrix.qt_arch }}"
         python -m aqt list-qt windows desktop --arch "${{ matrix.qt_version }}"
