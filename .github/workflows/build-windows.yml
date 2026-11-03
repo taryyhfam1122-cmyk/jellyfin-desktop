@@ -71,7 +71,7 @@ jobs:
       run: |
         $ErrorActionPreference = 'Stop'
         $qtRoot = Join-Path $env:GITHUB_WORKSPACE 'qt-arm64'
-        python -m aqt -v install-qt windows desktop "${{ env.QT_VERSION }}" "${{ matrix.qt_arch }}" --outputdir "$qtRoot" --modules qtwebengine qtwebchannel qtpositioning
+        python -m aqt install-qt windows desktop "${{ env.QT_VERSION }}" "${{ matrix.qt_arch }}" --outputdir "$qtRoot" --modules qtwebengine qtwebchannel qtpositioning
         if ($LASTEXITCODE -ne 0) { throw "Qt ARM64 installation failed with exit code $LASTEXITCODE. Check aqt error details above." }
         $qtDir = Join-Path (Join-Path $qtRoot "${{ env.QT_VERSION }}") "${{ matrix.qt_arch }}"
         if (-not (Test-Path $qtDir)) { throw "Qt ARM64 installation directory not found: $qtDir" }
