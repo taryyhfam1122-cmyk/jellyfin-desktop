@@ -12,11 +12,13 @@
 #define MyAppExeName "Jellyfin Desktop.exe"
 #define MyAppGUID "{{a78bea4a-5bd0-4aa3-bdf3-579b4f58a921}"
 #define DeployPath "@CMAKE_INSTALL_PREFIX@"
+#define TargetArch "@INSTALLER_ARCH_STR@"
+#define VCRedistFile "vc_redist.@INSTALLER_ARCH_STR@.exe"
 #if FileExists(DeployPath + "/vc_redist.arm64.exe")
   #define VCRedistExe "vc_redist.arm64.exe"
   #define TargetArch "arm64"
 #else
-  #define VCRedistExe "vc_redist.x64.exe"
+  #define VCRedistExe "{#VCRedistFile}"
   #define TargetArch "x64"
 #endif
 
@@ -64,7 +66,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Main application files (exclude redist folder - handled separately)
-Source: "{#DeployPath}/*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "redist,redist/*,vc_redist.x64.exe,vc_redist.arm64.exe"
+Source: "{#DeployPath}/*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "redist,redist/*,{#VCRedistFile},vc_redist.arm64.exe"
 ; Bundled VC runtime DLLs - only copied if needed (see Code section)
 Source: "{#DeployPath}/redist/*.dll"; DestDir: "{app}"; Flags: ignoreversion; Check: NeedsBundledRuntime
 ; Bundled VCRedist installer - extracted to temp for potential system-wide install
