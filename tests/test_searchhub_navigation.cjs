@@ -631,5 +631,14 @@ test('v36 persistent floating navigation is injector-independent and survives re
   assert.match(part,/root\.scrollTo\?\.\(\{top:0,behavior:'smooth'\}\)/);
   assert.match(part,/root\.scrollTo\?\.\(\{top:root\.scrollHeight,behavior:'smooth'\}\)/);
   assert.match(part,/back\.hidden=!detail/);
-  assert.match(part,/close\.hidden=detail/);
+  assert.match(part,/close\.hidden=false/);
+});
+
+test('v37 floating SearchHub close remains visible on actress and works screens',()=>{
+  const begin=source.indexOf('// BEGIN JFD_SEARCHHUB_FLOATING_NAV_V36');
+  const end=source.indexOf('// END JFD_SEARCHHUB_FLOATING_NAV_V36',begin);
+  const part=source.slice(begin,end);
+  assert.match(part,/close\.hidden=false/);
+  assert.match(part,/back\.hidden=!detail/);
+  assert.match(part,/close=make\('jfd-close','× 閉じる','close'\)/);
 });
