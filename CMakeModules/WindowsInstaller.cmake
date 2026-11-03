@@ -17,11 +17,7 @@ endif()
 message(STATUS "Found Inno Setup: ${ISCC}")
 
 # Configure the Inno Setup script with version and paths
-configure_file(
-  ${PROJECT_SOURCE_DIR}/bundle/win/JellyfinDesktop.iss.in
-  ${CMAKE_CURRENT_BINARY_DIR}/JellyfinDesktop.iss
-  @ONLY
-)
+
 
 # Create install target that copies files to CMAKE_INSTALL_PREFIX
 add_custom_target(innosetup_install
@@ -31,11 +27,19 @@ add_custom_target(innosetup_install
 )
 
 # Determine architecture string for output filename
-if(CMAKE_SIZEOF_VOID_P MATCHES 8)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|arm64|aarch64|AARCH64)$" OR ARCHSTR MATCHES "^(arm64|aarch64)$")
+  set(INSTALLER_ARCH_STR arm64)
+elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(INSTALLER_ARCH_STR x64)
 else()
   set(INSTALLER_ARCH_STR x86)
 endif()
+
+configure_file(
+  ${PROJECT_SOURCE_DIR}/bundle/win/JellyfinDesktop.iss.in
+  ${CMAKE_CURRENT_BINARY_DIR}/JellyfinDesktop.iss
+  @ONLY
+)
 
 set(INSTALLER_BASE_NAME "JellyfinDesktop-${VERSION_STRING}-${INSTALLER_ARCH_STR}")
 set(INSTALLER_OUTPUT_NAME "${INSTALLER_BASE_NAME}.exe")
