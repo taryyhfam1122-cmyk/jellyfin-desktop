@@ -618,3 +618,18 @@ test('v35 toolbar Back uses injector-owned SearchHub works back instead of Home'
   now+=300;fire();
   assert.equal(clicks,2,'second distinct toolbar Back must work');
 });
+
+test('v36 persistent floating navigation is injector-independent and survives redraw',()=>{
+  const begin=source.indexOf('// BEGIN JFD_SEARCHHUB_FLOATING_NAV_V36');
+  const end=source.indexOf('// END JFD_SEARCHHUB_FLOATING_NAV_V36',begin);
+  assert.ok(begin>=0&&end>begin);
+  const part=source.slice(begin,end);
+  assert.match(part,/document\.body\.appendChild\(dock\)/);
+  assert.match(part,/observer\.observe\(document\.body,\{childList:true,subtree:true\}\)/);
+  assert.match(part,/root\.querySelector\('\.jfsh-detailhead \[data-act="back"\]'\)\?\.click\(\)/);
+  assert.match(part,/root\.querySelector\('\[data-act="close"\]'\)\?\.click\(\)/);
+  assert.match(part,/root\.scrollTo\?\.\(\{top:0,behavior:'smooth'\}\)/);
+  assert.match(part,/root\.scrollTo\?\.\(\{top:root\.scrollHeight,behavior:'smooth'\}\)/);
+  assert.match(part,/back\.hidden=!detail/);
+  assert.match(part,/close\.hidden=detail/);
+});
