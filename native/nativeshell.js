@@ -2106,3 +2106,69 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
 })();
 }
 // END CHATGPT_JELLYFIN_SEARCHHUB_V15
+
+// BEGIN JFD_SEARCHHUB_FLOATING_NAV_SURFACE_V01
+// Desktop-only navigation controls independent of the server Injector.
+// Kept outside #jfsh-v1 so SearchHub redraws and scrolling cannot remove them.
+(() => {
+  'use strict';
+  if(window.__jfdSearchFloatingNavSURFACE_V01) return;
+  const dock=document.createElement('div');
+  dock.id='jfd-search-floating-nav-surface-v01';
+  dock.setAttribute('aria-label','検索一覧の移動');
+  const css=document.createElement('style');
+  css.textContent=`
+    #jfd-search-floating-nav-surface-v01{position:fixed;inset:0;z-index:2147483646;pointer-events:none;font-family:inherit}
+    #jfd-search-floating-nav-surface-v01 button{pointer-events:auto;position:absolute;min-height:54px;
+      padding:10px 18px;border:1px solid #5d94b8;border-radius:12px;background:#153c59;
+      color:#fff;font-size:17px;font-weight:700;box-shadow:0 4px 15px #0009;cursor:pointer}
+    #jfd-search-floating-nav-surface-v01 button:hover{background:#23618b}
+    #jfd-search-floating-nav-surface-v01 .jfd-return{left:50%;bottom:18px;transform:translateX(-50%)}
+    #jfd-search-floating-nav-surface-v01 .jfd-close{right:24px;top:20px}
+    #jfd-search-floating-nav-surface-v01 .jfd-top{right:24px;top:84px}
+    #jfd-search-floating-nav-surface-v01 .jfd-bottom{right:24px;bottom:20px}
+    #jfd-search-floating-nav-surface-v01[hidden]{display:none}
+  `;
+  const make=(cls,label,action)=>{
+    const b=document.createElement('button');b.type='button';b.className=cls;
+    b.textContent=label;b.addEventListener('click',event=>{
+      event.preventDefault();event.stopPropagation();
+      const root=document.getElementById('jfsh-v1');if(!root)return;
+      if(action==='back') root.querySelector('.jfsh-detailhead [data-act="back"]')?.click();
+      else if(action==='close') root.querySelector('[data-act="close"]')?.click();
+      else if(action==='top') root.scrollTo?.({top:0,behavior:'smooth'});
+      else if(action==='bottom') root.scrollTo?.({top:root.scrollHeight,behavior:'smooth'});
+      queueMicrotask(refresh);
+    });
+    dock.appendChild(b);return b;
+  };
+  const back=make('jfd-return','← 女優一覧へ戻る','back');
+  const close=make('jfd-close','× 閉じる','close');
+  const top=make('jfd-top','↑ 上部へ','top');
+  const bottom=make('jfd-bottom','↓ 下部へ','bottom');
+  function refresh(){
+    const root=document.getElementById('jfsh-v1');
+    const visible=!!root && root.getClientRects().length>0;
+    dock.hidden=!visible;
+    if(!visible)return;
+    const detail=!!root.querySelector('.jfsh-detailhead [data-act="back"]');
+    back.hidden=!detail;
+    // Closing SearchHub must remain available on actress, works and category screens.
+    close.hidden=false;
+    top.hidden=detail;
+    bottom.hidden=detail;
+    // The dock's [hidden] buttons must not inherit visibility from styling.
+    for(const b of [back,close,top,bottom])b.style.display=b.hidden?'none':'';
+  }
+  function init(){
+    if(!document.body)return;
+    document.head.appendChild(css);document.body.appendChild(dock);
+    const observer=new MutationObserver(refresh);
+    observer.observe(document.body,{childList:true,subtree:true});
+    refresh();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});
+  else init();
+  window.__jfdSearchFloatingNavSURFACE_V01=Object.freeze({refresh});
+})();
+// END JFD_SEARCHHUB_FLOATING_NAV_SURFACE_V01
