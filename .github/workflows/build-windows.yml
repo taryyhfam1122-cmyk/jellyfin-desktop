@@ -31,14 +31,13 @@ jobs:
             vc_redist_arch: x64
             vcvars: vcvars64.bat
             machine: X64
-          # ARM64 disabled - requires qt webengine builds
-          # - artifact: windows-arm64
-          #   qt_arch: win64_msvc2022_arm64
-          #   mpv_arch: aarch64
-          #   mpv_arch_fallback: ""
-          #   vc_redist_arch: arm64
-          #   vcvars: vcvarsamd64_arm64.bat
-          #   machine: ARM64
+          - artifact: windows-arm64
+            qt_arch: win64_msvc2022_arm64
+            mpv_arch: aarch64
+            mpv_arch_fallback: ""
+            vc_redist_arch: arm64
+            vcvars: vcvarsamd64_arm64.bat
+            machine: ARM64
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v7
@@ -131,17 +130,17 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-preview-v02-validation
+        name: ${{ matrix.artifact }}-surface-searchhub-v37-preview-v02-validation
         path: build/portable-validation/
         if-no-files-found: ignore
     - name: Archive installer
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-installer
+        name: ${{ matrix.artifact }}-surface-searchhub-v37-installer
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.exe
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ matrix.artifact }}-preview-v02-portable
+        name: ${{ matrix.artifact }}-surface-searchhub-v37-preview-v02-portable
         path: ${{ github.workspace }}/build/JellyfinDesktop-*.zip
         if-no-files-found: error
