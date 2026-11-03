@@ -579,7 +579,7 @@ QString SystemComponent::getNativeShellScript()
   clientData.insert("settingsDescriptions", QJsonValue::fromVariant(settingsDescriptions));
   // Browser playback on ARM64: do not advertise a native mpv plugin when
   // there is no OpenGL renderer. Only change this session, not saved settings.
-  QVariantMap runtimeSettings = SettingsComponent::Get().allValues();
+  QVariantMap runtimeSettings = SettingsComponent::Get().allValues().toMap();
 #if defined(Q_OS_WIN) && defined(_M_ARM64)
   if (qEnvironmentVariableIntValue("JFD_ARM64_NATIVE_MPV") != 1)
   {
