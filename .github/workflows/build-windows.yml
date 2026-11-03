@@ -32,7 +32,7 @@ jobs:
             vcvars: vcvars64.bat
             machine: X64
           - artifact: windows-arm64
-            qt_arch: win64_msvc2022_arm64
+            qt_arch: win64_msvc2022_arm64_cross_compiled
             mpv_arch: aarch64
             mpv_arch_fallback: ""
             vc_redist_arch: arm64
