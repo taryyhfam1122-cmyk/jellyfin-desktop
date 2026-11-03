@@ -13,14 +13,7 @@
 #define MyAppGUID "{{a78bea4a-5bd0-4aa3-bdf3-579b4f58a921}"
 #define DeployPath "@CMAKE_INSTALL_PREFIX@"
 #define TargetArch "@INSTALLER_ARCH_STR@"
-#define VCRedistFile "vc_redist.@INSTALLER_ARCH_STR@.exe"
-#if FileExists(DeployPath + "/vc_redist.arm64.exe")
-  #define VCRedistExe "vc_redist.arm64.exe"
-  #define TargetArch "arm64"
-#else
-  #define VCRedistExe "{#VCRedistFile}"
-  #define TargetArch "x64"
-#endif
+#define VCRedistExe "vc_redist.@INSTALLER_ARCH_STR@.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -38,8 +31,8 @@ DefaultDirName={autopf}\Jellyfin Desktop
 DisableProgramGroupPage=yes
 ; Require Windows 10 1903 or newer
 MinVersion=10.0.18362
-ArchitecturesInstallIn64BitMode={#TargetArch}compatible
-ArchitecturesAllowed={#TargetArch}compatible
+ArchitecturesInstallIn64BitMode=@INSTALLER_ARCH_CONSTRAINT@
+ArchitecturesAllowed=@INSTALLER_ARCH_CONSTRAINT@
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=.
@@ -66,7 +59,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Main application files (exclude redist folder - handled separately)
-Source: "{#DeployPath}/*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "redist,redist/*,{#VCRedistFile},vc_redist.arm64.exe"
+Source: "{#DeployPath}/*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "redist,redist/*,vc_redist.*.exe"
 ; Bundled VC runtime DLLs - only copied if needed (see Code section)
 Source: "{#DeployPath}/redist/*.dll"; DestDir: "{app}"; Flags: ignoreversion; Check: NeedsBundledRuntime
 ; Bundled VCRedist installer - extracted to temp for potential system-wide install
