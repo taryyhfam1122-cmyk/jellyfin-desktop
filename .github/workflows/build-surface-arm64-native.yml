@@ -50,6 +50,8 @@ jobs:
         run: |
           dotnet --info
           dotnet publish surface-arm64/JellyfinSurface.csproj -c Release -r win-arm64 --self-contained true -o publish
+      # Build the dedicated Surface WinForms/WebView2 touch UI, not the Qt
+      # build-windows executable (the latter has a different interface).
       - name: Verify ARM64 executable, loaders and native runtime
         run: |
           $ErrorActionPreference = 'Stop'
@@ -64,9 +66,9 @@ jobs:
           'PASS: ARM64 executable and native runtime; WebView2 initialization requires Surface test.' | Set-Content publish/validation.txt
       - name: Create Portable ZIP
         run: |
-          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-SearchHub-v25-nav-back-search.zip
+          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-Native-Touch-SearchHub-v26.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: jellyfin-surface-arm64-searchhub-v25-nav-back-search
-          path: JellyfinSurface-ARM64-SearchHub-v25-nav-back-search.zip
+          name: jellyfin-surface-arm64-native-touch-searchhub-v26
+          path: JellyfinSurface-ARM64-Native-Touch-SearchHub-v26.zip
           if-no-files-found: error
