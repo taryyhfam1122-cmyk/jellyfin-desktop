@@ -9,12 +9,13 @@ namespace JellyfinSurface;
 public sealed class SurfaceForm : Form
 {
     private readonly WebView2 _browser = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Black };
-    private readonly FlowLayoutPanel _toolbar = new() { Dock = DockStyle.Top, Height = 54, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(25, 29, 36), Padding = new Padding(4) };
-    private readonly FlowLayoutPanel _fullscreenBar = new() { Dock = DockStyle.Top, Height = 46, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(23, 28, 35), Padding = new Padding(3), Visible = false };
+    private readonly FlowLayoutPanel _toolbar = new() { Dock = DockStyle.Top, Height = 64, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(25, 29, 36), Padding = new Padding(4) };
+    private readonly FlowLayoutPanel _fullscreenBar = new() { Dock = DockStyle.Top, Height = 64, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(23, 28, 35), Padding = new Padding(3), Visible = false };
     private readonly TextBox _server = new() { Width = 400, Font = new Font("Segoe UI", 11), PlaceholderText = "http://NAS-IP:30013" };
     private readonly string _appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JellyfinSurfaceARM64");
     private bool _fullscreen;
     private string? _scriptId;
+    private string? _nativeSearchScriptId;
     private Uri? _serverUri;
 
     public SurfaceForm()
@@ -60,12 +61,14 @@ public sealed class SurfaceForm : Form
         var b = new Button
         {
             Text = caption,
-            Width = width,
-            Height = 40,
+            Width = caption == "検索一覧" ? 180 : width,
+            Height = caption == "検索一覧" ? 52 : 44,
+            Font = caption == "検索一覧" ? new Font("Segoe UI", 13, FontStyle.Bold) : new Font("Segoe UI", 10),
             FlatStyle = FlatStyle.Flat,
             ForeColor = Color.White,
-            BackColor = Color.FromArgb(46, 57, 70),
-            Margin = new Padding(3, 2, 3, 2)
+            BackColor = caption == "検索一覧" ? Color.FromArgb(9, 100, 156) : Color.FromArgb(46, 57, 70),
+            Margin = new Padding(4, 3, 4, 3),
+            TextAlign = ContentAlignment.MiddleCenter
         };
         b.Click += (_, _) => action();
         return b;
@@ -272,6 +275,8 @@ public sealed class SurfaceForm : Form
                                 _ = StopAndReturnToSearchAsync();
                             else if (command == "toggle-fullscreen")
                                 ToggleFullscreen();
+                            else if (command == "open-search")
+                                _ = OpenSearchHubAsync();
                         }
                         return;
                     }
@@ -294,6 +299,22 @@ public sealed class SurfaceForm : Form
                 {
                     var loaded = await core.ExecuteScriptAsync("Boolean(window.__jfdSurfaceTouchV1)");
                     Log("Touch script injected: " + (loaded == "true" ? "yes" : "no"));
+                    var hub = await core.ExecuteScriptAsync("Boolean(window.__jfdSurfaceSearchHub?.openSearch)");
+                    Log("SearchHub bridge loaded: " + (hub == "true" ? "yes" : "no"));
+                    if (hub != "true" && _serverUri is not null)
+                    {
+                        // A document-start script can be interrupted by an early
+                        // Jellyfin redirect. Retry this origin-guarded module once.
+                        var script = await File.ReadAllTextAsync(
+                            Path.Combine(AppContext.BaseDirectory, "searchhub.js"));
+                        script = script.Replace("\"__JFD_SERVER_ORIGIN__\"",
+                            JsonSerializer.Serialize(_serverUri.GetLeftPart(UriPartial.Authority)),
+                            StringComparison.Ordinal);
+                        await core.ExecuteScriptAsync(script);
+                        var recovered = await core.ExecuteScriptAsync(
+                            "Boolean(window.__jfdSurfaceSearchHub?.openSearch)");
+                        Log("SearchHub navigation recovery: " + (recovered == "true" ? "yes" : "no"));
+                    }
                 }
                 catch (Exception error) { Log("Touch diagnostics unavailable: " + error.GetType().Name); }
             };
@@ -326,6 +347,62 @@ public sealed class SurfaceForm : Form
             _server.Text = server.GetLeftPart(UriPartial.Authority);
             File.WriteAllText(Path.Combine(_appData, "server.txt"), _server.Text);
             if (_scriptId is not null) _browser.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(_scriptId);
+            if (_nativeSearchScriptId is not null)
+                _browser.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(_nativeSearchScriptId);
+
+            // An independent, always discoverable touch-sized launcher. Unlike
+            // the legacy #jfsh-launch, it does not disappear when window.ApiClient
+            // has not yet been published by the Jellyfin Web SPA. It calls the
+            // native SearchHub bridge which can recover the module if necessary.
+            const string nativeSearchLauncher = """
+                (() => {
+                    'use strict';
+                    if (location.origin !== "__JFD_SERVER_ORIGIN__" ||
+                        window.__jfdSurfaceSearchEntryV27) return;
+                    window.__jfdSurfaceSearchEntryV27 = true;
+                    const ID = 'jfd-surface-search-entry-v27';
+                    function refresh() {
+                        if (!document.body) return;
+                        let btn = document.getElementById(ID);
+                        if (!btn) {
+                            btn = document.createElement('button');
+                            btn.id = ID;
+                            btn.type = 'button';
+                            btn.textContent = '🔎 検索一覧';
+                            btn.setAttribute('aria-label', '女優・シリーズ・ジャンルの検索一覧を開く');
+                            btn.style.cssText = 'position:fixed;top:76px;left:50%;transform:translateX(-50%);'
+                              + 'min-width:152px;min-height:44px;padding:8px 19px;'
+                              + 'background:#085c8d;color:white;border:1px solid #6db9e4;'
+                              + 'font:700 16px sans-serif;border-radius:14px;'
+                              + 'box-shadow:0 3px 15px #000a;z-index:2147483645;cursor:pointer;';
+                            btn.addEventListener('click', e => {
+                                e.preventDefault(); e.stopPropagation();
+                                window.chrome?.webview?.postMessage({
+                                    type: 'jfd-player-action', action: 'open-search'
+                                });
+                            });
+                            document.body.appendChild(btn);
+                        }
+                        const playing = window.__jfdSurfacePlaybackUI?.isPlaying?.() === true ||
+                            /\\/(?:video|player)(?:[/?]|$)/i.test(location.hash) ||
+                            Array.from(document.querySelectorAll('video')).some(v =>
+                                v.readyState > 0 && v.getBoundingClientRect().width > 120);
+                        const open = !!document.getElementById('jfsh-v1');
+                        const legacy = document.getElementById('jfsh-launch');
+                        const legacyVisible = !!legacy && legacy.getClientRects().length > 0 &&
+                            getComputedStyle(legacy).display !== 'none';
+                        const loggingIn = /\\/(?:login|selectserver|startupwizard)/i.test(location.hash);
+                        btn.style.display = (playing || open || legacyVisible || loggingIn) ? 'none' : '';
+                    }
+                    refresh();
+                    document.addEventListener('DOMContentLoaded', refresh, {once:true});
+                    window.addEventListener('hashchange', refresh);
+                    setInterval(refresh, 950);
+                })();
+                """;
+            _nativeSearchScriptId = await _browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                nativeSearchLauncher.Replace("\"__JFD_SERVER_ORIGIN\"",
+                    JsonSerializer.Serialize(_server.Text), StringComparison.Ordinal));
             var preview = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "trickplay-preview.js"));
             var searchHub = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "searchhub.js"));
             var source = preview + "\n" + await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "controls.js")) + "\n" + searchHub;
