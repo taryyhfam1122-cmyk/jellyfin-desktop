@@ -54,12 +54,24 @@ jobs:
         node --test tests/test_mouse_controls.cjs
         node --test tests/test_fullscreen_trickplay.cjs
         node --test tests/test_preview_v02.cjs
+    - name: Diagnose available Qt ARM64 packages
+      if: matrix.machine == 'ARM64'
+      shell: powershell
+      run: |
+        python -m pip install --upgrade aqtinstall
+        Write-Host "Qt version: ${{ env.QT_VERSION }}"
+        Write-Host "Requested architecture: ${{ matrix.qt_arch }}"
+        Write-Host "Available architectures:"
+        python -m aqt list-qt windows desktop --arch "${{ env.QT_VERSION }}"
+        Write-Host "Requested modules:"
+        python -m aqt list-qt windows desktop --modules "${{ env.QT_VERSION }}" "${{ matrix.qt_arch }}"
     - name: Install Qt 6
       uses: jurplel/install-qt-action@v4
       with:
         version: "${{ env.QT_VERSION }}"
         arch: "${{ matrix.qt_arch }}"
         modules: "qtwebengine qtwebchannel qtpositioning"
+        aqtversion: "==3.3.0"
     - name: Install Inno Setup
       run: |
         choco install innosetup -y
