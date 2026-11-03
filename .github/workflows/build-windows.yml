@@ -65,13 +65,23 @@ jobs:
         python -m aqt list-qt windows desktop --arch "${{ env.QT_VERSION }}"
         Write-Host "Requested modules:"
         python -m aqt list-qt windows desktop --modules "${{ env.QT_VERSION }}" "${{ matrix.qt_arch }}"
-    - name: Install Qt 6
+    - name: Install Qt 6 (ARM64 with explicit diagnostics)
+      if: matrix.machine == 'ARM64'
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $qtRoot = Join-Path $env:GITHUB_WORKSPACE 'qt-arm64'
+        python -m aqt install-qt windows desktop "${{ env.QT_VERSION }}" "${{ matrix.qt_arch }}" --outputdir "$qtRoot" --modules qtwebengine qtwebchannel qtpositioning --verbose
+        if ($LASTEXITCODE -ne 0) { throw "Qt ARM64 installation failed with exit code $LASTEXITCODE. Check aqt error details above." }
+        $qtDir = Join-Path $qtRoot "${{ env:QT_VERSION }}"
+        Write-Host "Installed Qt under $qtRoot"
+    - name: Install Qt 6 (x64)
+      if: matrix.machine == 'X64'
       uses: jurplel/install-qt-action@v4
       with:
         version: "${{ env.QT_VERSION }}"
         arch: "${{ matrix.qt_arch }}"
         modules: "qtwebengine qtwebchannel qtpositioning"
-        aqtversion: "==3.3.0"
     - name: Install Inno Setup
       run: |
         choco install innosetup -y
