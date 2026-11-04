@@ -63,6 +63,7 @@ internal sealed class OfflineLibrary
             // This event fires only for downloads handled inside the Surface WebView2.
             // A separate top-level popup must be redirected to this WebView2 by SurfaceForm.
             var destination = UniqueVideoPath(e.ResultFilePath);
+            var sourceUrl = e.DownloadOperation.Uri;
             var partial = destination + ".jfdpartial";
             _activeDownloads.Add(destination);
             e.ResultFilePath = partial;
@@ -79,6 +80,7 @@ internal sealed class OfflineLibrary
                     {
                         File.Move(partial, destination);
                         _log("Offline download completed and saved");
+                        _ = OfflineJackets.TryDownloadJacketAsync(destination, sourceUrl, _log);
                     }
                     else
                     {
@@ -104,24 +106,36 @@ internal sealed class OfflineLibrary
             .OrderByDescending(f => f.LastWriteTimeUtc).ToList();
         using var form = new Form
         {
-            Text = "オフライン動画", Width = 840, Height = 600,
+            Text = "オフライン動画（ジャケット一覧）", Width = 930, Height = 650,
             MinimumSize = new Size(560, 360), StartPosition = FormStartPosition.CenterParent,
             BackColor = Color.FromArgb(20, 25, 33), ForeColor = Color.White
         };
+        using var covers = new ImageList
+        {
+            ImageSize = new Size(138, 190),
+            ColorDepth = ColorDepth.Depth32Bit
+        };
         var list = new ListView
         {
-            Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true,
+            Dock = DockStyle.Fill, View = View.LargeIcon,
+            MultiSelect = false, ShowItemToolTips = true,
+            LargeImageList = covers,
             BackColor = Color.FromArgb(28, 35, 46), ForeColor = Color.White,
-            Font = new Font("Segoe UI", 11)
+            Font = new Font("Segoe UI", 10)
         };
-        list.Columns.Add("保存した動画", 610);
-        list.Columns.Add("サイズ", 120);
-        foreach (var file in files)
+        void AddVideo(FileInfo file)
         {
-            var row = new ListViewItem(file.Name) { Tag = file.FullName };
-            row.SubItems.Add((file.Length / 1024d / 1024d).ToString("N0") + " MB");
+            using var thumbnail = OfflineJackets.GetThumbnail(file.FullName);
+            covers.Images.Add((Image)thumbnail.Clone());
+            var row = new ListViewItem(Path.GetFileNameWithoutExtension(file.Name))
+            {
+                Tag = file.FullName,
+                ImageIndex = covers.Images.Count - 1,
+                ToolTipText = file.Name + "  (" + (file.Length / 1024d / 1024d).ToString("N0") + " MB)"
+            };
             list.Items.Add(row);
         }
+        foreach (var file in files) AddVideo(file);
         var commands = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 58, Padding = new Padding(8) };
         Button MakeButton(string title, Action action)
         {
@@ -164,9 +178,9 @@ internal sealed class OfflineLibrary
                         continue;
                     File.Copy(source, dest);
                     var info = new FileInfo(dest);
-                    var row = new ListViewItem(info.Name) { Tag = info.FullName };
-                    row.SubItems.Add((info.Length / 1024d / 1024d).ToString("N0") + " MB");
-                    list.Items.Add(row);
+                    if (File.Exists(OfflineJackets.CoverPath(source)))
+                        File.Copy(OfflineJackets.CoverPath(source), OfflineJackets.CoverPath(dest), false);
+                    AddVideo(info);
                     imported++;
                 }
                 catch (Exception ex) { _log("Offline import failed: " + ex.GetType().Name); }
@@ -174,6 +188,32 @@ internal sealed class OfflineLibrary
             MessageBox.Show(form, imported + "本をアプリに取り込みました。元ファイルは残しています。",
                 "取り込み完了", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
+        void SetCover()
+        {
+            var path = SelectedPath();
+            if (path is null || !File.Exists(path)) return;
+            using var picker = new OpenFileDialog
+            {
+                Title = "ジャケット画像を選択",
+                Filter = "ジャケット画像|*.jpg;*.jpeg;*.png;*.bmp"
+            };
+            if (picker.ShowDialog(form) != DialogResult.OK) return;
+            try
+            {
+                OfflineJackets.SaveManual(path, picker.FileName);
+                var selected = list.SelectedItems[0];
+                using var thumbnail = OfflineJackets.GetThumbnail(path);
+                covers.Images[selected.ImageIndex] = (Image)thumbnail.Clone();
+                list.Invalidate();
+            }
+            catch (Exception ex)
+            {
+                _log("Manual jacket error: " + ex.GetType().Name);
+                MessageBox.Show(form, "ジャケット画像を読み込めませんでした。JPGまたはPNGを選択してください。",
+                    "画像を確認", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
         void Delete()
         {
             var path = SelectedPath();
@@ -181,11 +221,13 @@ internal sealed class OfflineLibrary
             if (MessageBox.Show(form, "Surface内の保存ファイルだけを削除します。よろしいですか？",
                     "保存動画を削除", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             File.Delete(path);
+            if (OfflineJackets.HasCover(path)) File.Delete(OfflineJackets.CoverPath(path));
             list.Items.Remove(list.SelectedItems[0]);
         }
         commands.Controls.Add(MakeButton("アプリ内で再生", Play));
         commands.Controls.Add(MakeButton("外部プレーヤー", External));
         commands.Controls.Add(MakeButton("動画を取り込む", Import));
+        commands.Controls.Add(MakeButton("ジャケット選択", SetCover));
         commands.Controls.Add(MakeButton("保存ファイル削除", Delete));
         commands.Controls.Add(MakeButton("閉じる", form.Close));
         form.Controls.Add(list);
@@ -210,6 +252,11 @@ html,body{margin:0;height:100%;background:#080b11;color:#fff;font:16px Segoe UI,
 *{box-sizing:border-box}button{border:0;border-radius:8px;background:#263749;color:white;padding:10px 14px;font:inherit;cursor:pointer;min-height:42px}
 button:active{background:#405a75}
 header{height:54px;padding:6px 12px;display:flex;align-items:center;gap:12px;background:#121c28}
+#jfd-expanded-tools{display:none;position:fixed;top:12px;right:12px;z-index:9999;gap:8px;opacity:.85}
+.jfd-expanded header,.jfd-expanded footer{display:none}
+.jfd-expanded #jfd-expanded-tools{display:flex}
+.jfd-expanded #jfd-offline-touch{height:100vh}
+.jfd-expanded video{height:100%;width:100%}
 #jfd-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 #jfd-offline-touch{position:relative;height:calc(100vh - 154px);background:black;touch-action:none;overflow:hidden;user-select:none}
 video{width:100%;height:100%;object-fit:contain;pointer-events:none}
@@ -225,7 +272,10 @@ footer{height:100px;display:flex;flex-direction:column;justify-content:center;ga
 </style>
 </head>
 <body>
-<header><button id="jfd-offline-back">← 保存済み</button><div id="jfd-title">__JFD_TITLE__</div></header>
+<header><button id="jfd-offline-home">■ 停止してホーム</button><button id="jfd-offline-back">← 保存済み</button>
+<button id="jfd-offline-fullscreen">⛶ 動画全画面</button><div id="jfd-title">__JFD_TITLE__</div></header>
+<div id="jfd-expanded-tools"><button id="jfd-offline-expanded-home">■ ホームへ</button>
+<button id="jfd-offline-expanded-exit">↙ 全画面解除</button></div>
 <div id="jfd-offline-touch"><video id="jfd-offline-video" autoplay playsinline preload="metadata" src="__JFD_FILE__"></video>
 <div id="jfd-offline-indicator" hidden></div></div>
 <footer>
