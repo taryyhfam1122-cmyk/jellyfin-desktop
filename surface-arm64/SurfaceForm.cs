@@ -350,8 +350,9 @@ public sealed class SurfaceForm : Form
                         switch (action.GetString())
                         {
                             case "list":
-                            case "home":
                                 OpenSaved(); break;
+                            case "home":
+                                _offlineLibrary?.ShowOfflineHome(resetToRoot: true); break;
                             case "online-home":
                                 _ = ReturnOnlineFromOfflineAsync(); break;
                             case "play":
