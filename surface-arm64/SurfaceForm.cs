@@ -122,12 +122,26 @@ public sealed class SurfaceForm : Form
             core.Settings.AreDevToolsEnabled = false;
             core.Settings.IsZoomControlEnabled = false;
             core.Settings.AreDefaultContextMenusEnabled = true;
-            core.NewWindowRequested += (_, e) => { e.Handled = true; OpenExternal(e.Uri); };
+            core.NewWindowRequested += (_, e) =>
+            {
+                e.Handled = true;
+                if (IsJellyfinDownloadUrl(e.Uri))
+                {
+                    // Open the download inside our authenticated WebView2, not Edge.
+                    // This causes DownloadStarting to select the private offline folder.
+                    Log("Intercepted Jellyfin download popup");
+                    core.Navigate(e.Uri);
+                }
+                else
+                {
+                    OpenExternal(e.Uri);
+                }
+            };
             core.NavigationStarting += (_, e) =>
             {
                 if (_serverUri is null) return;
-                if (_offlineLibrary?.IsOfflinePage == true &&
-                    Uri.TryCreate(e.Uri, UriKind.Absolute, out var local) && local.IsFile)
+                // Only our generated offline player page is trusted to load as file://.
+                if (_offlineLibrary?.IsPlayerSource(e.Uri) == true)
                     return;
                 if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var next) &&
                     (next.Scheme != _serverUri.Scheme || next.Authority != _serverUri.Authority))
@@ -141,6 +155,28 @@ public sealed class SurfaceForm : Form
             {
                 // Accept only fixed diagnostic events from the selected Jellyfin origin.
                 // Never log the message body, media URL, access token or username.
+                if (_offlineLibrary?.IsPlayerSource(e.Source) == true)
+                {
+                    try
+                    {
+                        using var localDoc = JsonDocument.Parse(e.WebMessageAsJson);
+                        var localRoot = localDoc.RootElement;
+                        if (!localRoot.TryGetProperty("type", out var localType) ||
+                            localType.GetString() != "jfd-offline-action" ||
+                            !localRoot.TryGetProperty("action", out var localAction)) return;
+                        switch (localAction.GetString())
+                        {
+                            case "list":
+                                _offlineLibrary.Show();
+                                break;
+                            case "toggle-fullscreen":
+                                ToggleFullscreen();
+                                break;
+                        }
+                    }
+                    catch (JsonException) { }
+                    return;
+                }
                 if (_serverUri is null || !Uri.TryCreate(e.Source, UriKind.Absolute, out var from) ||
                     from.Scheme != _serverUri.Scheme || from.Authority != _serverUri.Authority)
                     return;
@@ -224,6 +260,20 @@ public sealed class SurfaceForm : Form
             Log(ex.GetType().Name + ": " + ex.Message);
             MessageBox.Show("Jellyfinへの接続処理に失敗しました。\n" + ex.Message, "Jellyfin Surface");
         }
+    }
+
+    private bool IsJellyfinDownloadUrl(string? raw)
+    {
+        if (_serverUri is null || !Uri.TryCreate(raw, UriKind.Absolute, out var target))
+            return false;
+        if (target.Scheme != _serverUri.Scheme || target.Authority != _serverUri.Authority)
+            return false;
+        var parts = target.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        // Jellyfin's media download endpoint: /Items/{itemId}/Download.
+        return parts.Length >= 3 &&
+            parts[^3].Equals("Items", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(parts[^2]) &&
+            parts[^1].Equals("Download", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryServerUrl(string raw, out Uri server)
