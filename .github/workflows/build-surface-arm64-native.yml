@@ -18,6 +18,7 @@ on:
       - surface-arm64-native-v12
       - surface-arm64-native-v13
       - searchhub-surface-v15
+      - surface-offline-v01
     paths:
       - 'surface-arm64/**'
       - '.github/workflows/build-surface-arm64-native.yml'
