@@ -18,7 +18,8 @@ on:
       - surface-arm64-native-v12
       - surface-arm64-native-v13
       - surface-arm64-offline-v01
-      - surface-arm64-offline-v02
+      - surface-arm64-offline-v03
+      - surface-arm64-offline-v03
     paths:
       - 'surface-arm64/**'
       - '.github/workflows/build-surface-arm64-native.yml'
@@ -41,6 +42,7 @@ jobs:
         run: |
           node --check surface-arm64/controls.js
           node --check surface-arm64/offline-controls.js
+          node --check surface-arm64/online-jacket-capture.js
           node --check surface-arm64/trickplay-preview.js
           node --test surface-arm64/tests/gestures.test.cjs
           node --test surface-arm64/tests/touch-runtime.test.cjs
@@ -56,6 +58,7 @@ jobs:
           if (!(Test-Path $exe)) { throw 'Native executable missing' }
           if (!(Test-Path publish/controls.js)) { throw 'Touch controls missing' }
           if (!(Test-Path publish/offline-controls.js)) { throw 'Offline touch controls missing' }
+          if (!(Test-Path publish/online-jacket-capture.js)) { throw 'Offline cover capture module missing' }
           if (!(Test-Path publish/trickplay-preview.js)) { throw 'Trickplay module missing' }
           if (!(Test-Path publish/runtimes/win-arm64/native/WebView2Loader.dll)) { throw 'ARM64 WebView2 loader missing' }
           $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru
@@ -63,9 +66,9 @@ jobs:
           'PASS: ARM64 executable and native runtime; WebView2 initialization requires Surface test.' | Set-Content publish/validation.txt
       - name: Create Portable ZIP
         run: |
-          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-offline-v02.zip
+          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-offline-v03.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: jellyfin-surface-arm64-offline-v02
-          path: JellyfinSurface-ARM64-offline-v02.zip
+          name: jellyfin-surface-arm64-offline-v03
+          path: JellyfinSurface-ARM64-offline-v03.zip
           if-no-files-found: error
