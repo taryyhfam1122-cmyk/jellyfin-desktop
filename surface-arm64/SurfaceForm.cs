@@ -14,6 +14,7 @@ public sealed class SurfaceForm : Form
     private readonly TextBox _server = new() { Width = 400, Font = new Font("Segoe UI", 11), PlaceholderText = "http://NAS-IP:30013" };
     private readonly string _appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JellyfinSurfaceARM64");
     private bool _fullscreen;
+    private bool _offlineVideoExpanded;
     private string? _scriptId;
     private Uri? _serverUri;
     private OfflineLibrary? _offlineLibrary;
@@ -32,12 +33,12 @@ public sealed class SurfaceForm : Form
         var connect = Button("接続", 66, () => _ = ConnectAsync());
         var refresh = Button("更新", 65, () => _browser.Reload());
         var full = Button("全画面", 82, ToggleFullscreen);
-        var offline = Button("保存済み", 96, () => _offlineLibrary?.Show());
+        var offline = Button("保存済み", 96, OpenSaved);
         var exit = Button("終了 ✕", 95, Close);
         var leaveFullscreen = Button("通常表示", 102, ToggleFullscreen);
         var fullHome = Button("ホーム", 90, () => _ = StopAndHomeAsync());
         var fullRefresh = Button("更新 ↻", 100, () => _browser.Reload());
-        var fullOffline = Button("保存済み", 100, () => _offlineLibrary?.Show());
+        var fullOffline = Button("保存済み", 100, OpenSaved);
         var fullExit = Button("アプリを終了 ✕", 148, Close);
 
         _toolbar.Controls.AddRange([back, home, _server, connect, refresh, offline, full, exit]);
@@ -72,12 +73,37 @@ public sealed class SurfaceForm : Form
 
     private void ToggleFullscreen()
     {
+        if (_offlineVideoExpanded)
+        {
+            SetOfflineVideoExpanded(false);
+            return;
+        }
         _fullscreen = !_fullscreen;
         _toolbar.Visible = !_fullscreen;
-        // Keep touch-sized native exit/home controls visible even in fullscreen.
         _fullscreenBar.Visible = _fullscreen;
         FormBorderStyle = _fullscreen ? FormBorderStyle.None : FormBorderStyle.Sizable;
         WindowState = FormWindowState.Maximized;
+    }
+
+    private void SetOfflineVideoExpanded(bool expanded)
+    {
+        if (expanded && _offlineLibrary?.IsOfflinePage != true) return;
+        _offlineVideoExpanded = expanded;
+        // App may already be fullscreen: a separate video mode must hide BOTH
+        // the native command bar and the page's header/seek bar.
+        _toolbar.Visible = !expanded && !_fullscreen;
+        _fullscreenBar.Visible = !expanded && _fullscreen;
+        FormBorderStyle = (expanded || _fullscreen) ? FormBorderStyle.None : FormBorderStyle.Sizable;
+        WindowState = FormWindowState.Maximized;
+        if (_browser.CoreWebView2 is not null && _offlineLibrary?.IsOfflinePage == true)
+            _ = _browser.CoreWebView2.ExecuteScriptAsync(
+                "document.body.classList.toggle('jfd-expanded'," + (expanded ? "true" : "false") + ")");
+    }
+
+    private void OpenSaved()
+    {
+        if (_offlineVideoExpanded) SetOfflineVideoExpanded(false);
+        _offlineLibrary?.Show();
     }
 
     private async Task StopAndHomeAsync()
@@ -86,6 +112,9 @@ public sealed class SurfaceForm : Form
         if (core is null || _serverUri is null) return;
         if (_offlineLibrary?.IsOfflinePage == true)
         {
+            // Stop the local file before leaving the offline player.
+            _ = core.ExecuteScriptAsync("document.getElementById('jfd-offline-video')?.pause()");
+            if (_offlineVideoExpanded) SetOfflineVideoExpanded(false);
             _offlineLibrary.EnterServer();
             core.Navigate(new Uri(_serverUri, "/web/#/home").ToString());
             return;
@@ -167,10 +196,13 @@ public sealed class SurfaceForm : Form
                         switch (localAction.GetString())
                         {
                             case "list":
-                                _offlineLibrary.Show();
+                                OpenSaved();
                                 break;
-                            case "toggle-fullscreen":
-                                ToggleFullscreen();
+                            case "home":
+                                _ = StopAndHomeAsync();
+                                break;
+                            case "video-fullscreen":
+                                SetOfflineVideoExpanded(!_offlineVideoExpanded);
                                 break;
                         }
                     }
