@@ -463,9 +463,9 @@ internal sealed class OfflineLibrary
                     var op = pair.Value;
                     var total = op.TotalBytesToReceive;
                     var received = op.BytesReceived;
-                    var percent = total > 0 ? (100d * received / total).ToString("N0") + "%" : "不明";
+                    var percent = total.HasValue && total.Value > 0 ? (100d * received / total.Value).ToString("N0") + "%" : "不明";
                     var size = (received / 1048576d).ToString("N1") + " MB / " +
-                        (total > 0 ? (total / 1048576d).ToString("N1") + " MB" : "不明");
+                        (total.HasValue && total.Value > 0 ? (total.Value / 1048576d).ToString("N1") + " MB" : "不明");
                     var row = new ListViewItem(Path.GetFileName(pair.Key)) { Tag = pair.Key };
                     row.SubItems.Add(op.State.ToString());
                     row.SubItems.Add(percent);
@@ -498,7 +498,7 @@ internal sealed class OfflineLibrary
                 state = op.State.ToString(),
                 received,
                 total,
-                percent = total > 0 ? 100d * received / total : -1d
+                percent = total.HasValue && total.Value > 0 ? 100d * received / total.Value : -1d
             };
         }).ToArray();
         var json = JsonSerializer.Serialize(rows);
