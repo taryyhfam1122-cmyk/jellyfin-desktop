@@ -17,6 +17,8 @@ public sealed class SurfaceForm : Form
     private string? _scriptId;
     private string? _nativeSearchScriptId;
     private Uri? _serverUri;
+    private OfflineLibrary? _offlineLibrary;
+    private bool _offlineVideoExpanded;
 
     public SurfaceForm()
     {
@@ -32,6 +34,7 @@ public sealed class SurfaceForm : Form
         // An always-accessible native launcher avoids depending on the
         // Jellyfin page's floating search button or fullscreen CSS.
         var search = Button("検索一覧", 96, () => _ = OpenSearchHubAsync());
+        var offline = Button("保存済み", 105, OpenSaved);
         var connect = Button("接続", 66, () => _ = ConnectAsync());
         var refresh = Button("更新", 65, () => _browser.Reload());
         var full = Button("全画面", 82, ToggleFullscreen);
@@ -40,10 +43,11 @@ public sealed class SurfaceForm : Form
         var fullHome = Button("ホーム", 90, NavigateHomeDirect);
         var fullSearch = Button("検索一覧", 100, () => _ = OpenSearchHubAsync());
         var fullRefresh = Button("更新 ↻", 100, () => _browser.Reload());
+        var fullOffline = Button("保存済み", 100, OpenSaved);
         var fullExit = Button("アプリを終了 ✕", 148, Close);
 
-        _toolbar.Controls.AddRange([back, home, search, _server, connect, refresh, full, exit]);
-        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullSearch, fullRefresh, fullExit]);
+        _toolbar.Controls.AddRange([back, home, search, offline, _server, connect, refresh, full, exit]);
+        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullSearch, fullOffline, fullRefresh, fullExit]);
         Controls.Add(_browser);
         Controls.Add(_toolbar);
         Controls.Add(_fullscreenBar);
@@ -76,12 +80,77 @@ public sealed class SurfaceForm : Form
 
     private void ToggleFullscreen()
     {
+        if (_offlineLibrary?.IsOfflinePage == true)
+        {
+            SetOfflineVideoExpanded(!_offlineVideoExpanded);
+            return;
+        }
         _fullscreen = !_fullscreen;
         _toolbar.Visible = !_fullscreen;
         // Keep touch-sized native exit/home controls visible even in fullscreen.
         _fullscreenBar.Visible = _fullscreen;
         FormBorderStyle = _fullscreen ? FormBorderStyle.None : FormBorderStyle.Sizable;
         WindowState = FormWindowState.Maximized;
+    }
+
+    private void RestoreOnlineBars()
+    {
+        _toolbar.Visible = !_fullscreen;
+        _fullscreenBar.Visible = _fullscreen;
+    }
+
+    private void SetOfflineVideoExpanded(bool value)
+    {
+        _offlineVideoExpanded = value;
+        if (_offlineLibrary?.IsOfflinePage == true && _browser.CoreWebView2 is not null)
+            _ = _browser.CoreWebView2.ExecuteScriptAsync(
+                "document.body.classList.toggle('jfd-expanded'," + (value ? "true" : "false") + ")");
+    }
+
+    private void OpenSaved()
+    {
+        if (_offlineLibrary is null) return;
+        _offlineVideoExpanded = false;
+        _toolbar.Visible = false;
+        _fullscreenBar.Visible = false;
+        _offlineLibrary.ShowOfflineHome();
+    }
+
+    private async Task ReturnOnlineFromOfflineAsync()
+    {
+        if (_serverUri is null || !await ServerIsOnlineAsync(_serverUri))
+        {
+            MessageBox.Show("Jellyfinサーバーに接続できません。保存済み動画は引き続き再生できます。",
+                "オフラインモード", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        _offlineLibrary?.EnterServer();
+        _offlineVideoExpanded = false;
+        RestoreOnlineBars();
+        NavigateHomeDirect();
+    }
+
+    private static async Task<bool> ServerIsOnlineAsync(Uri server)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            using var response = await client.GetAsync(new Uri(server, "/System/Info/Public"),
+                HttpCompletionOption.ResponseHeadersRead);
+            return response.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    private bool IsJellyfinDownloadUrl(string? raw)
+    {
+        if (_serverUri is null || !Uri.TryCreate(raw, UriKind.Absolute, out var target) ||
+            target.Scheme != _serverUri.Scheme || target.Authority != _serverUri.Authority) return false;
+        var parts = target.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 3 &&
+            parts[^3].Equals("Items", StringComparison.OrdinalIgnoreCase) &&
+            Guid.TryParse(parts[^2], out _) &&
+            parts[^1].Equals("Download", StringComparison.OrdinalIgnoreCase);
     }
 
     // The native SearchHub launcher remains visible even when Jellyfin's
@@ -237,12 +306,25 @@ public sealed class SurfaceForm : Form
             var env = await CoreWebView2Environment.CreateAsync(userDataFolder: Path.Combine(_appData, "WebProfile"));
             await _browser.EnsureCoreWebView2Async(env);
             var core = _browser.CoreWebView2;
+            _offlineLibrary = new OfflineLibrary(_appData, _browser, Log);
+            _offlineLibrary.Attach(core);
             core.Settings.AreDevToolsEnabled = false;
             core.Settings.IsZoomControlEnabled = false;
             core.Settings.AreDefaultContextMenusEnabled = true;
-            core.NewWindowRequested += (_, e) => { e.Handled = true; OpenExternal(e.Uri); };
+            core.NewWindowRequested += (_, e) =>
+            {
+                e.Handled = true;
+                if (IsJellyfinDownloadUrl(e.Uri))
+                {
+                    _offlineLibrary?.RequestJacketCapture(core, e.Uri);
+                    // The authenticated WebView processes the media download.
+                    core.Navigate(e.Uri);
+                }
+                else OpenExternal(e.Uri);
+            };
             core.NavigationStarting += (_, e) =>
             {
+                if (_offlineLibrary?.IsOfflineSource(e.Uri) == true) return;
                 if (_serverUri is null) return;
                 if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var next) &&
                     (next.Scheme != _serverUri.Scheme || next.Authority != _serverUri.Authority))
@@ -254,7 +336,40 @@ public sealed class SurfaceForm : Form
             core.ProcessFailed += (_, e) => Log("WebView2 process failed: " + e.ProcessFailedKind);
             core.WebMessageReceived += (_, e) =>
             {
-                // Accept only fixed diagnostic events from the selected Jellyfin origin.
+                if (_offlineLibrary?.IsOfflineSource(e.Source) == true)
+                {
+                    try
+                    {
+                        using var localDoc = JsonDocument.Parse(e.WebMessageAsJson);
+                        var root = localDoc.RootElement;
+                        if (!root.TryGetProperty("type", out var type) ||
+                            type.GetString() != "jfd-offline-action" ||
+                            !root.TryGetProperty("action", out var action)) return;
+                        var file = root.TryGetProperty("file", out var name) &&
+                            name.ValueKind == JsonValueKind.String ? name.GetString() : null;
+                        switch (action.GetString())
+                        {
+                            case "list":
+                            case "home":
+                                OpenSaved(); break;
+                            case "online-home":
+                                _ = ReturnOnlineFromOfflineAsync(); break;
+                            case "play":
+                                _offlineLibrary?.PlaySaved(file); break;
+                            case "manage":
+                                _offlineLibrary?.Show(); break;
+                            case "cover":
+                                _offlineLibrary?.ChangeCover(file); break;
+                            case "delete":
+                                _offlineLibrary?.DeleteSaved(file); break;
+                            case "video-fullscreen":
+                                SetOfflineVideoExpanded(!_offlineVideoExpanded); break;
+                        }
+                    }
+                    catch (JsonException) { }
+                    return;
+                }
+                // Accept only selected Jellyfin origin and trusted local offline pages.
                 // Never log the message body, media URL, access token or username.
                 if (_serverUri is null || !Uri.TryCreate(e.Source, UriKind.Absolute, out var from) ||
                     from.Scheme != _serverUri.Scheme || from.Authority != _serverUri.Authority)
@@ -264,6 +379,16 @@ public sealed class SurfaceForm : Form
                     using var doc = JsonDocument.Parse(e.WebMessageAsJson);
                     var root = doc.RootElement;
                     if (!root.TryGetProperty("type", out var type)) return;
+                    if (type.GetString() == "jfd-cover-image")
+                    {
+                        _offlineLibrary?.AcceptJacketMessage(root);
+                        return;
+                    }
+                    if (type.GetString() == "jfd-offline-meta")
+                    {
+                        _offlineLibrary?.AcceptMetadataMessage(root);
+                        return;
+                    }
                     if (type.GetString() == "jfd-player-action")
                     {
                         if (root.TryGetProperty("action", out var action))
@@ -294,7 +419,14 @@ public sealed class SurfaceForm : Form
             };
             _browser.NavigationCompleted += async (_, e) =>
             {
-                if (!e.IsSuccess) { Log("Navigation error: " + e.WebErrorStatus); return; }
+                if (!e.IsSuccess)
+                {
+                    Log("Navigation error: " + e.WebErrorStatus);
+                    // When the NAS is unavailable, start the local library instead of an error page.
+                    if (_offlineLibrary?.IsOfflinePage != true && _offlineLibrary is not null)
+                        OpenSaved();
+                    return;
+                }
                 try
                 {
                     var loaded = await core.ExecuteScriptAsync("Boolean(window.__jfdSurfaceTouchV1)");
@@ -344,6 +476,10 @@ public sealed class SurfaceForm : Form
         try
         {
             _serverUri = server;
+            _offlineLibrary?.SetServer(server);
+            _offlineLibrary?.EnterServer();
+            _offlineVideoExpanded = false;
+            RestoreOnlineBars();
             _server.Text = server.GetLeftPart(UriPartial.Authority);
             File.WriteAllText(Path.Combine(_appData, "server.txt"), _server.Text);
             if (_scriptId is not null) _browser.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(_scriptId);
