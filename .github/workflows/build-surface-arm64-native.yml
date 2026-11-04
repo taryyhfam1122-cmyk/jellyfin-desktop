@@ -20,6 +20,7 @@ on:
       - surface-arm64-offline-v01
       - surface-arm64-offline-v02
       - surface-arm64-offline-v03
+      - surface-arm64-online-player-layout-fix
     paths:
       - 'surface-arm64/**'
       - '.github/workflows/build-surface-arm64-native.yml'
@@ -40,13 +41,25 @@ jobs:
           node-version: '22'
       - name: Verify touch source
         run: |
+          function node {
+            & (Get-Command node.exe).Source @args
+            if ($LASTEXITCODE -ne 0) { throw "Node validation failed: $args" }
+          }
           node --check surface-arm64/controls.js
+          node --check surface-arm64/online-player-layout.js
           node --check surface-arm64/offline-controls.js
           node --check surface-arm64/online-jacket-capture.js
           node --check surface-arm64/trickplay-preview.js
           node --test surface-arm64/tests/gestures.test.cjs
           node --test surface-arm64/tests/touch-runtime.test.cjs
           node --test surface-arm64/tests/preview-runtime.test.cjs
+      - name: Verify online player layout in Edge
+        run: |
+          npm install --prefix "$env:RUNNER_TEMP/jfd-browser-tests" --no-audit --no-fund playwright-core@1.62.1
+          if ($LASTEXITCODE -ne 0) { throw 'Browser test dependency installation failed' }
+          $env:NODE_PATH = "$env:RUNNER_TEMP/jfd-browser-tests/node_modules"
+          node --test surface-arm64/tests/online-player-layout.test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Online player layout regression failed' }
       - name: Restore and publish native win-arm64
         run: |
           dotnet --info
@@ -57,6 +70,7 @@ jobs:
           $exe = Join-Path (Resolve-Path publish).Path 'JellyfinSurfaceARM64.exe'
           if (!(Test-Path $exe)) { throw 'Native executable missing' }
           if (!(Test-Path publish/controls.js)) { throw 'Touch controls missing' }
+          if (!(Test-Path publish/online-player-layout.js)) { throw 'Online player layout missing' }
           if (!(Test-Path publish/offline-controls.js)) { throw 'Offline touch controls missing' }
           if (!(Test-Path publish/online-jacket-capture.js)) { throw 'Offline cover capture module missing' }
           if (!(Test-Path publish/trickplay-preview.js)) { throw 'Trickplay module missing' }
