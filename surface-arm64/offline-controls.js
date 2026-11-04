@@ -122,8 +122,8 @@
             Math.abs(prev.x - x) < 85 && Math.abs(prev.y - y) < 85) {
             clearTimeout(prev.timer);
             pendingTap = null;
-            if (upper) send('toggle-fullscreen');
-            else { video.pause(); send('list'); }
+            if (upper) send('video-fullscreen');
+            else { video.pause(); send('home'); }
             return;
         }
         if (prev) { clearTimeout(prev.timer); pendingTap = null; togglePlay(); }
@@ -166,7 +166,19 @@
     area.addEventListener('lostpointercapture', () => { drag = null; clearHold(); });
     area.addEventListener('contextmenu', e => e.preventDefault());
 
-    document.getElementById('jfd-offline-back').addEventListener('click', () => { video.pause(); send('list'); });
+    function stopHome() {
+        video.pause();
+        send('home');
+    }
+    function openSaved() {
+        video.pause();
+        send('list');
+    }
+    document.getElementById('jfd-offline-back').addEventListener('click', openSaved);
+    document.getElementById('jfd-offline-home').addEventListener('click', stopHome);
+    document.getElementById('jfd-offline-fullscreen').addEventListener('click', () => send('video-fullscreen'));
+    document.getElementById('jfd-offline-expanded-exit').addEventListener('click', () => send('video-fullscreen'));
+    document.getElementById('jfd-offline-expanded-home').addEventListener('click', stopHome);
     play.addEventListener('click', togglePlay);
     document.getElementById('jfd-offline-rewind').addEventListener('click', () => setTime(video.currentTime - 10));
     document.getElementById('jfd-offline-forward').addEventListener('click', () => setTime(video.currentTime + 10));
@@ -188,7 +200,13 @@
         if (e.key === 'ArrowRight') { setTime(video.currentTime + 10); e.preventDefault(); }
         else if (e.key === 'ArrowLeft') { setTime(video.currentTime - 10); e.preventDefault(); }
         else if (e.code === 'Space') { togglePlay(); e.preventDefault(); }
-        else if (e.key === 'Escape') { video.pause(); send('list'); e.preventDefault(); }
+        else if (e.key === 'f' || e.key === 'F') { send('video-fullscreen'); e.preventDefault(); }
+        else if (e.key === 'Escape') {
+            if (document.body.classList.contains('jfd-expanded'))
+                send('video-fullscreen');
+            else stopHome();
+            e.preventDefault();
+        }
     });
     update();
 })();
