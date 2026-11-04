@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jellyfin Offline</title>
+<style>
+:root{color-scheme:dark;--bg:#0e141e;--pane:#172131;--tile:#1a2636;--blue:#247dc0;--line:#2b3a4b;--txt:#e8f1fa;--muted:#9eb0c4}
+*{box-sizing:border-box}body{margin:0;color:var(--txt);background:var(--bg);font:16px 'Segoe UI',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+button,input,select{font:inherit}button{min-height:44px;border:1px solid #38526b;border-radius:10px;background:#223a52;color:white;padding:9px 13px;cursor:pointer}
+button:active{background:#32699a}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #79c3ff}
+header{min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 18px;border-bottom:1px solid var(--line)}
+header h1{font-size:23px;margin:0}.hint{color:var(--muted);font-size:12px}header .actions{display:flex;align-items:center;gap:8px}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 16px;border-bottom:1px solid var(--line)}
+.toolbar input{flex:1;min-width:130px;background:var(--pane);color:white;border:1px solid #40566c;padding:10px;border-radius:9px}
+.toolbar select{background:var(--pane);color:white;padding:10px;border:1px solid #40566c;border-radius:9px}
+main{display:flex;min-height:0;flex:1}
+aside{width:31%;min-width:170px;max-width:335px;overflow:auto;background:#121c29;border-right:1px solid var(--line);padding:12px}
+aside .label{font-size:13px;color:var(--muted);padding:7px}
+.tree-row{display:flex;align-items:center;width:100%;text-align:left;border:0;background:none;border-radius:9px;margin:1px 0;gap:7px}
+.tree-row.selected{background:#255383}.tree-row .count{font-size:12px;color:#b4c6d9;margin-left:auto}
+.tree-row .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tree-row .folder-icon{font-size:19px}
+section{flex:1;min-width:0;display:flex;flex-direction:column}
+section .crumbs{padding:14px 18px;border-bottom:1px solid var(--line);color:#b4c5da;display:flex;justify-content:space-between}
+#cards{flex:1;overflow:auto;padding:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));align-content:start;gap:14px}
+.poster{min-width:0;text-align:left;background:transparent;border:0;padding:0;display:block}
+.cover{width:100%;aspect-ratio:3/4;background:#263447;border-radius:9px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #35485e}
+.cover img{height:100%;width:100%;object-fit:contain}.no-cover{font-size:12px;color:#8fabc7;text-align:center}
+.title{font-size:13px;line-height:1.25;margin-top:7px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+footer{border-top:1px solid var(--line);padding:9px 18px;color:var(--muted);font-size:13px}
+dialog{max-width:min(590px,92vw);width:100%;background:#172232;border:1px solid #45718b;border-radius:15px;color:#e6f0fa;padding:20px}
+dialog::backdrop{background:#000b}dialog h2{font-size:19px;margin:0 0 8px}dialog .buttons{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+#empty{color:var(--muted);padding:34px;font-size:16px;grid-column:1/-1}
+@media(max-width:710px){header h1{font-size:17px}aside{width:37%;min-width:125px;padding:5px}#cards{grid-template-columns:repeat(auto-fill,minmax(105px,1fr));padding:8px;gap:9px}.tree-row{padding:7px 3px;font-size:12px}.toolbar{padding:6px}}
+</style></head>
+<body>
+<header><div><h1>Jellyfin Offline</h1><div class="hint">通信なしでも保存した動画を再生できます</div></div>
+<div class="actions"><button id="manage">保存管理</button><button id="online">オンラインへ戻る</button></div></header>
+<div class="toolbar"><input type="search" id="search" placeholder="保存済み作品を検索" autocomplete="off" aria-label="保存済み作品を検索">
+<select id="sort" aria-label="並び替え"><option value="saved">保存順（新しい順）</option><option value="name">作品名順</option><option value="size">容量順</option></select></div>
+<main><aside><div class="label">フォルダ</div><div id="tree"></div></aside>
+<section><div class="crumbs"><strong id="where">すべての作品</strong><span id="count"></span></div><div id="cards"></div></section></main>
+<footer id="summary">保存済み作品のみ表示 / NAS上の元ファイルは変更されません</footer>
+<dialog id="details"><h2 id="detail-title"></h2><div id="detail-path" class="hint"></div><div id="detail-size" class="hint"></div>
+<div class="buttons"><button id="detail-play">▶ 再生</button><button id="detail-cover">ジャケット変更</button><button id="detail-delete">保存動画を削除</button><button id="detail-close">閉じる</button></div></dialog>
+<script id="jfd-offline-data" type="application/json">__JFD_ITEMS__</script>
+<script>__JFD_SCRIPT__</script></body></html>
