@@ -1,0 +1,38 @@
+<!doctype html><html lang="ja"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jellyfin Offline Player</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:black;color:white;font:16px 'Segoe UI',sans-serif}
+*{box-sizing:border-box}button{min-height:48px;border:1px solid #54708a;border-radius:9px;background:#263a51;color:white;padding:8px 14px;font:600 16px 'Segoe UI';cursor:pointer}
+button:active{background:#4075a4}
+#jfd-offline-touch{position:fixed;inset:0;touch-action:none;background:black;overflow:hidden;user-select:none}
+video{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none}
+header,footer{display:none;position:fixed;left:0;right:0;z-index:10;background:#101a29eb}
+body.jfd-menu-visible header{display:flex;align-items:center;justify-content:space-between;top:0;min-height:75px;padding:10px 16px;gap:10px}
+body.jfd-menu-visible footer{display:flex;flex-direction:column;gap:8px;bottom:0;padding:12px 16px}
+#jfd-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bed0df;font-size:14px;flex:1}
+.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#jfd-offline-seek{width:100%;height:32px;accent-color:#81bbff}
+#jfd-offline-rate{min-width:55px}#jfd-offline-clock{margin-left:auto;font-variant-numeric:tabular-nums}
+#jfd-offline-indicator{position:fixed;top:47%;left:50%;transform:translate(-50%,-50%);background:#121f30ea;border:1px solid #718ead;z-index:12;border-radius:12px;padding:12px 22px;pointer-events:none;font-weight:600;font-size:20px;white-space:nowrap}
+#jfd-offline-indicator[hidden]{display:none}
+#jfd-expanded-tools{display:none}
+body.jfd-expanded header,body.jfd-expanded footer{background:#0d1524de}
+@media(max-width:650px){button{font-size:13px;padding:7px;min-height:43px}.controls{gap:5px}#jfd-offline-clock{font-size:12px}}
+</style></head><body>
+<div id="jfd-offline-touch"><video id="jfd-offline-video" autoplay playsinline preload="metadata" src="__JFD_FILE__"></video></div>
+<div id="jfd-offline-indicator" hidden></div>
+<header id="jfd-player-menu">
+<button id="jfd-offline-back">← 保存一覧へ戻る</button>
+<button id="jfd-offline-home">■ オフラインホーム</button>
+<button id="jfd-offline-fullscreen">⛶ 全画面切替</button>
+<div id="jfd-title">__JFD_TITLE__</div>
+</header>
+<footer id="jfd-player-footer">
+<input id="jfd-offline-seek" type="range" min="0" max="1" value="0" step=".1" aria-label="再生位置">
+<div class="controls"><button id="jfd-offline-rewind">◀ 10秒</button><button id="jfd-offline-play">⏸ 一時停止</button>
+<button id="jfd-offline-forward">10秒 ▶</button>
+<span id="jfd-offline-rate">1.00×</span><span id="jfd-offline-clock">0:00 / 0:00</span></div>
+</footer>
+<div id="jfd-expanded-tools"><button id="jfd-offline-expanded-home">ホームへ</button><button id="jfd-offline-expanded-exit">全画面解除</button></div>
+<script>__JFD_SCRIPT__</script></body></html>
