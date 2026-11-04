@@ -78,6 +78,16 @@
         if (holdTimer) clearInterval(holdTimer);
         holdTimer = null;
     }
+    function applyVolume(dy) {
+        // Rightmost 15%: same direction and 5% feel as v26's online gestures.
+        const delta = Math.round(-dy / stepPx) * .05;
+        video.volume = clamp(drag.startVolume + delta, 1);
+        video.muted = false;
+        show('音量 ' + Math.round(video.volume * 100) + '%');
+    }
+    function toggleMenu() {
+        document.body.classList.toggle('jfd-menu-visible');
+    }
     function applySpeed(dy) {
         const steps = Math.round(-dy / stepPx);
         const hundredths = Math.max(50, Math.min(400, Math.round(drag.startRate * 100) + steps * 5));
@@ -90,10 +100,13 @@
         if (!drag.mode) {
             if (drag.startX < drag.rect.width * .15 && Math.abs(dy) > 25 && Math.abs(dy) > Math.abs(dx))
                 drag.mode = 'speed';
+            else if (drag.startX > drag.rect.width * .85 && Math.abs(dy) > 25 && Math.abs(dy) > Math.abs(dx))
+                drag.mode = 'volume';
             else if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.15)
                 drag.mode = 'seek';
         }
         if (drag.mode === 'speed') { applySpeed(dy); return; }
+        if (drag.mode === 'volume') { applyVolume(dy); return; }
         if (drag.mode === 'seek') {
             drag.dx = dx;
             drag.target = clamp(drag.startTime + seekDelta(dx) + drag.holdOffset, duration() - .05);
@@ -126,12 +139,12 @@
             else { video.pause(); send('home'); }
             return;
         }
-        if (prev) { clearTimeout(prev.timer); pendingTap = null; togglePlay(); }
+        if (prev) { clearTimeout(prev.timer); pendingTap = null; if (prev.upper) toggleMenu(); else togglePlay(); }
         const tap = { at, x, y, upper, timer: null };
         tap.timer = setTimeout(() => {
             if (pendingTap !== tap) return;
             pendingTap = null;
-            togglePlay();
+            if (upper) toggleMenu(); else togglePlay();
         }, doubleTapMs);
         pendingTap = tap;
     }
@@ -141,7 +154,7 @@
         const rect = area.getBoundingClientRect();
         drag = { id: e.pointerId, rect, startX: e.clientX - rect.left,
             startY: e.clientY - rect.top, startTime: video.currentTime || 0,
-            startRate: video.playbackRate, target: video.currentTime || 0,
+            startRate: video.playbackRate, startVolume: video.volume, target: video.currentTime || 0,
             mode: null, dx: 0, holdOffset: 0, lastSeek: 0 };
         area.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -179,6 +192,7 @@
     document.getElementById('jfd-offline-fullscreen').addEventListener('click', () => send('video-fullscreen'));
     document.getElementById('jfd-offline-expanded-exit').addEventListener('click', () => send('video-fullscreen'));
     document.getElementById('jfd-offline-expanded-home').addEventListener('click', stopHome);
+    document.getElementById('jfd-offline-video').addEventListener('ended',()=>send('list'));
     play.addEventListener('click', togglePlay);
     document.getElementById('jfd-offline-rewind').addEventListener('click', () => setTime(video.currentTime - 10));
     document.getElementById('jfd-offline-forward').addEventListener('click', () => setTime(video.currentTime + 10));
@@ -208,5 +222,6 @@
             e.preventDefault();
         }
     });
+    // No automatic hide: a second single tap in the top quarter hides the controls.
     update();
 })();
