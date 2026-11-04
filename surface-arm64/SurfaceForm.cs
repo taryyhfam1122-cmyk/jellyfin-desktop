@@ -16,6 +16,7 @@ public sealed class SurfaceForm : Form
     private bool _fullscreen;
     private string? _scriptId;
     private Uri? _serverUri;
+    private OfflineLibrary? _offlineLibrary;
 
     public SurfaceForm()
     {
@@ -31,14 +32,16 @@ public sealed class SurfaceForm : Form
         var connect = Button("接続", 66, () => _ = ConnectAsync());
         var refresh = Button("更新", 65, () => _browser.Reload());
         var full = Button("全画面", 82, ToggleFullscreen);
+        var offline = Button("保存済み", 96, () => _offlineLibrary?.Show());
         var exit = Button("終了 ✕", 95, Close);
         var leaveFullscreen = Button("通常表示", 102, ToggleFullscreen);
         var fullHome = Button("ホーム", 90, () => _ = StopAndHomeAsync());
         var fullRefresh = Button("更新 ↻", 100, () => _browser.Reload());
+        var fullOffline = Button("保存済み", 100, () => _offlineLibrary?.Show());
         var fullExit = Button("アプリを終了 ✕", 148, Close);
 
-        _toolbar.Controls.AddRange([back, home, _server, connect, refresh, full, exit]);
-        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullRefresh, fullExit]);
+        _toolbar.Controls.AddRange([back, home, _server, connect, refresh, offline, full, exit]);
+        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullRefresh, fullOffline, fullExit]);
         Controls.Add(_browser);
         Controls.Add(_toolbar);
         Controls.Add(_fullscreenBar);
@@ -81,6 +84,12 @@ public sealed class SurfaceForm : Form
     {
         var core = _browser.CoreWebView2;
         if (core is null || _serverUri is null) return;
+        if (_offlineLibrary?.IsOfflinePage == true)
+        {
+            _offlineLibrary.EnterServer();
+            core.Navigate(new Uri(_serverUri, "/web/#/home").ToString());
+            return;
+        }
         try
         {
             // Jellyfin Web's SPA navigation triggers its viewbeforehide handler,
@@ -108,6 +117,8 @@ public sealed class SurfaceForm : Form
             var env = await CoreWebView2Environment.CreateAsync(userDataFolder: Path.Combine(_appData, "WebProfile"));
             await _browser.EnsureCoreWebView2Async(env);
             var core = _browser.CoreWebView2;
+            _offlineLibrary = new OfflineLibrary(_appData, _browser, Log);
+            _offlineLibrary.Attach(core);
             core.Settings.AreDevToolsEnabled = false;
             core.Settings.IsZoomControlEnabled = false;
             core.Settings.AreDefaultContextMenusEnabled = true;
@@ -115,6 +126,9 @@ public sealed class SurfaceForm : Form
             core.NavigationStarting += (_, e) =>
             {
                 if (_serverUri is null) return;
+                if (_offlineLibrary?.IsOfflinePage == true &&
+                    Uri.TryCreate(e.Uri, UriKind.Absolute, out var local) && local.IsFile)
+                    return;
                 if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var next) &&
                     (next.Scheme != _serverUri.Scheme || next.Authority != _serverUri.Authority))
                 {
@@ -194,6 +208,7 @@ public sealed class SurfaceForm : Form
         }
         try
         {
+            _offlineLibrary?.EnterServer();
             _serverUri = server;
             _server.Text = server.GetLeftPart(UriPartial.Authority);
             File.WriteAllText(Path.Combine(_appData, "server.txt"), _server.Text);
