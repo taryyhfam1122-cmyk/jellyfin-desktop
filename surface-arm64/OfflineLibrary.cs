@@ -36,6 +36,7 @@ internal sealed class OfflineLibrary
     private sealed class OfflineVideoMeta
     {
         public string Title { get; set; } = "";
+        public string ItemId { get; set; } = "";
         public string[] Folders { get; set; } = [];
     }
     private readonly Dictionary<Guid, OfflineVideoMeta> _capturedMeta = [];
@@ -58,7 +59,7 @@ internal sealed class OfflineLibrary
                     folders.Add(clean);
             }
         }
-        var meta = new OfflineVideoMeta { Title = title, Folders = folders.ToArray() };
+        var meta = new OfflineVideoMeta { Title = title, ItemId = id.ToString("N"), Folders = folders.ToArray() };
         _capturedMeta[id] = meta;
         if (_capturedMeta.Count > 40) _capturedMeta.Remove(_capturedMeta.Keys.First());
         if (_coverDestinations.TryGetValue(id, out var paths))
@@ -194,8 +195,9 @@ internal sealed class OfflineLibrary
                     if (state == CoreWebView2DownloadState.Completed && File.Exists(partial))
                     {
                         File.Move(partial, destination);
-                        if (itemId is Guid metaId && _capturedMeta.TryGetValue(metaId, out var info))
-                            SaveMeta(destination, info);
+                        if (itemId is Guid metaId)
+                            SaveMeta(destination, _capturedMeta.TryGetValue(metaId, out var info)
+                                ? info : new OfflineVideoMeta { ItemId = metaId.ToString("N") });
                         _log("Offline download completed and saved");
                         if (itemId is Guid coverId &&
                             _capturedCoverImages.TryGetValue(coverId, out var coverBytes))
