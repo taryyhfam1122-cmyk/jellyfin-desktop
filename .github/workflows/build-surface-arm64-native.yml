@@ -17,6 +17,7 @@ on:
       - surface-arm64-native-v11
       - surface-arm64-native-v12
       - surface-arm64-native-v13
+      - surface-arm64-offline-v01
     paths:
       - 'surface-arm64/**'
       - '.github/workflows/build-surface-arm64-native.yml'
@@ -59,9 +60,9 @@ jobs:
           'PASS: ARM64 executable and native runtime; WebView2 initialization requires Surface test.' | Set-Content publish/validation.txt
       - name: Create Portable ZIP
         run: |
-          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-native-v13.zip
+          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-offline-v01.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: jellyfin-surface-arm64-native-v13
+          name: jellyfin-surface-arm64-offline-v01
           path: JellyfinSurface-ARM64-native-v13.zip
           if-no-files-found: error
