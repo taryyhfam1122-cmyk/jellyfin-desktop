@@ -18,7 +18,7 @@ on:
       - surface-arm64-native-v12
       - surface-arm64-native-v13
       - surface-arm64-offline-v01
-      - surface-arm64-offline-v03
+      - surface-arm64-offline-v02
       - surface-arm64-offline-v03
     paths:
       - 'surface-arm64/**'
