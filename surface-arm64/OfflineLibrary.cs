@@ -18,6 +18,7 @@ internal sealed class OfflineLibrary
     private readonly string _playerPage;
     private readonly string _homePage;
     private readonly HashSet<string> _activeDownloads = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CoreWebView2DownloadOperation> _downloadOperations = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Guid, List<string>> _coverDestinations = [];
     private readonly Dictionary<Guid, byte[]> _capturedCoverImages = [];
     private Uri? _serverOrigin;
@@ -178,6 +179,7 @@ internal sealed class OfflineLibrary
             }
             var partial = destination + ".jfdpartial";
             _activeDownloads.Add(destination);
+            _downloadOperations[destination] = e.DownloadOperation;
             e.ResultFilePath = partial;
             e.Handled = true; // Suppress the default browser download dialog.
             _log("Offline download started in application storage");
@@ -186,6 +188,7 @@ internal sealed class OfflineLibrary
                 var state = e.DownloadOperation.State;
                 if (state == CoreWebView2DownloadState.InProgress) return;
                 _activeDownloads.Remove(destination);
+                _downloadOperations.Remove(destination);
                 try
                 {
                     if (state == CoreWebView2DownloadState.Completed && File.Exists(partial))
@@ -399,6 +402,67 @@ internal sealed class OfflineLibrary
             if (File.Exists(path + ".jfd-meta.json")) File.Delete(path + ".jfd-meta.json");
         }
         catch (Exception ex) { _log("Offline deletion failed: " + ex.GetType().Name); }
+        ShowOfflineHome();
+    }
+
+    public bool ConfirmClose()
+    {
+        if (_activeDownloads.Count == 0) return true;
+        return MessageBox.Show(
+            "ダウンロード中の動画が " + _activeDownloads.Count + " 件あります。中断してアプリを終了しますか？",
+            "ダウンロード中", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+    }
+
+    public void ReportDownloads()
+    {
+        if (_browser.CoreWebView2 is null || !_offlinePage) return;
+        var rows = _downloadOperations.Select(pair =>
+        {
+            var op = pair.Value;
+            var total = op.TotalBytesToReceive;
+            var received = op.BytesReceived;
+            return new
+            {
+                name = Path.GetFileName(pair.Key),
+                state = op.State.ToString(),
+                received,
+                total,
+                percent = total > 0 ? 100d * received / total : -1d
+            };
+        }).ToArray();
+        var json = JsonSerializer.Serialize(rows);
+        _ = _browser.CoreWebView2.ExecuteScriptAsync("window.jfdSetDownloads?.(" + json + ")");
+    }
+
+    public void DeleteMany(JsonElement root)
+    {
+        if (!root.TryGetProperty("files", out var field) || field.ValueKind != JsonValueKind.Array) return;
+        var names = field.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.String)
+            .Select(x => x.GetString())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(2000).ToList();
+        var paths = names.Select(ResolveFile).Where(x => x is not null)
+            .Select(x => x!).Where(x => !_activeDownloads.Contains(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (paths.Count == 0) return;
+        var bytes = paths.Sum(path => new FileInfo(path).Length);
+        var reply = MessageBox.Show(
+            "Surface内の動画 " + paths.Count + " 本（" + (bytes / 1073741824d).ToString("N2") +
+            " GB）を削除します。NAS上の元ファイルは変更されません。\n\n元に戻せません。実行しますか？",
+            "選択した動画を削除", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (reply != DialogResult.Yes) return;
+        var failed = 0;
+        foreach (var path in paths)
+        {
+            try
+            {
+                File.Delete(path);
+                if (File.Exists(OfflineJackets.CoverPath(path))) File.Delete(OfflineJackets.CoverPath(path));
+                if (File.Exists(path + ".jfd-meta.json")) File.Delete(path + ".jfd-meta.json");
+            }
+            catch (Exception ex) { failed++; _log("Offline batch deletion failed: " + ex.GetType().Name); }
+        }
+        if (failed > 0) MessageBox.Show(failed + " 本を削除できませんでした。", "削除結果");
         ShowOfflineHome();
     }
 
