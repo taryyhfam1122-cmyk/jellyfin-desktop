@@ -64,5 +64,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: jellyfin-surface-arm64-offline-v01
-          path: JellyfinSurface-ARM64-native-v13.zip
+          path: JellyfinSurface-ARM64-offline-v01.zip
           if-no-files-found: error
