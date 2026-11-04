@@ -60,6 +60,22 @@ internal static class OfflineJackets
         bitmap.Save(CoverPath(videoPath), ImageFormat.Jpeg);
     }
 
+    public static bool TrySaveCaptured(string videoPath, byte[] jpegBytes)
+    {
+        if (!File.Exists(videoPath) || HasCover(videoPath) ||
+            jpegBytes.Length is < 200 or > 2_000_000) return false;
+        try
+        {
+            using var input = new MemoryStream(jpegBytes);
+            using var image = Image.FromStream(input, false, true);
+            if (image.Width is < 10 or > 6000 || image.Height is < 10 or > 6000 ||
+                (long)image.Width * image.Height > 15_000_000) return false;
+            SaveImageBytesAsJpeg(videoPath, image);
+            return true;
+        }
+        catch { return false; }
+    }
+
     public static async Task TryDownloadJacketAsync(string downloadedVideo, string downloadUri,
         Action<string> log)
     {
