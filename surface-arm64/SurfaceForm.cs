@@ -6,7 +6,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 namespace JellyfinSurface;
 
-public sealed class SurfaceForm : Form
+public sealed partial class SurfaceForm : Form
 {
     private readonly WebView2 _browser = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Black };
     private readonly FlowLayoutPanel _toolbar = new() { Dock = DockStyle.Top, Height = 64, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(25, 29, 36), Padding = new Padding(4) };
@@ -39,11 +39,13 @@ public sealed class SurfaceForm : Form
         var leaveFullscreen = Button("通常表示", 102, ToggleFullscreen);
         var fullHome = Button("ホーム", 90, NavigateHomeDirect);
         var fullSearch = Button("検索一覧", 100, () => _ = OpenSearchHubAsync());
+        var offline = Button("オフライン", 106, ShowOfflineLibrary);
         var fullRefresh = Button("更新 ↻", 100, () => _browser.Reload());
+        var fullOffline = Button("オフライン", 106, ShowOfflineLibrary);
         var fullExit = Button("アプリを終了 ✕", 148, Close);
 
-        _toolbar.Controls.AddRange([back, home, search, _server, connect, refresh, full, exit]);
-        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullSearch, fullRefresh, fullExit]);
+        _toolbar.Controls.AddRange([back, home, search, offline, _server, connect, refresh, full, exit]);
+        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullSearch, fullOffline, fullRefresh, fullExit]);
         Controls.Add(_browser);
         Controls.Add(_toolbar);
         Controls.Add(_fullscreenBar);
@@ -240,6 +242,7 @@ public sealed class SurfaceForm : Form
             core.Settings.AreDevToolsEnabled = false;
             core.Settings.IsZoomControlEnabled = false;
             core.Settings.AreDefaultContextMenusEnabled = true;
+            InitializeOfflineDownloads();
             core.NewWindowRequested += (_, e) => { e.Handled = true; OpenExternal(e.Uri); };
             core.NavigationStarting += (_, e) =>
             {
