@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -16,6 +17,9 @@ internal sealed class OfflineLibrary
     private bool _offlinePage;
     private readonly string _playerPage;
     private readonly HashSet<string> _activeDownloads = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<Guid, List<string>> _coverDestinations = [];
+    private readonly Dictionary<Guid, byte[]> _capturedCoverImages = [];
+    private Uri? _serverOrigin;
 
     public OfflineLibrary(string appData, WebView2 browser, Action<string> log)
     {
@@ -28,6 +32,62 @@ internal sealed class OfflineLibrary
 
     public bool IsOfflinePage => _offlinePage;
     public void EnterServer() => _offlinePage = false;
+    public void SetServer(Uri server) => _serverOrigin = server;
+
+    private Guid? ItemIdFromDownload(string? raw)
+    {
+        if (_serverOrigin is null || !Uri.TryCreate(raw, UriKind.Absolute, out var source) ||
+            source.Scheme != _serverOrigin.Scheme || source.Authority != _serverOrigin.Authority)
+            return null;
+        var parts = source.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < parts.Length - 2; i++)
+        {
+            if (parts[i].Equals("Items", StringComparison.OrdinalIgnoreCase) &&
+                parts[i + 2].Equals("Download", StringComparison.OrdinalIgnoreCase) &&
+                Guid.TryParse(parts[i + 1], out var id)) return id;
+        }
+        return null;
+    }
+
+    public void RequestJacketCapture(CoreWebView2 core, string? downloadUrl)
+    {
+        var id = ItemIdFromDownload(downloadUrl);
+        if (id is null || _serverOrigin is null) return;
+        if (!Uri.TryCreate(core.Source, UriKind.Absolute, out var page) ||
+            page.Scheme != _serverOrigin.Scheme || page.Authority != _serverOrigin.Authority) return;
+        try
+        {
+            var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "online-jacket-capture.js"));
+            source = source.Replace("\"__JFD_ITEM_ID__\"",
+                JsonSerializer.Serialize(id.Value.ToString("N")), StringComparison.Ordinal);
+            _ = core.ExecuteScriptAsync(source);
+        }
+        catch (Exception ex) { _log("Jacket capture unavailable: " + ex.GetType().Name); }
+    }
+
+    public void AcceptJacketMessage(JsonElement root)
+    {
+        if (!root.TryGetProperty("itemId", out var itemField) ||
+            !Guid.TryParse(itemField.GetString(), out var id) ||
+            !root.TryGetProperty("image", out var imageField)) return;
+        var encoded = imageField.GetString();
+        if (encoded is null || encoded.Length is < 300 or > 2_800_000) return;
+        try
+        {
+            var data = Convert.FromBase64String(encoded);
+            if (data.Length is < 200 or > 2_000_000) return;
+            _capturedCoverImages[id] = data;
+            if (_capturedCoverImages.Count > 8)
+                _capturedCoverImages.Remove(_capturedCoverImages.Keys.First());
+            if (_coverDestinations.TryGetValue(id, out var paths))
+            {
+                foreach (var path in paths)
+                    if (OfflineJackets.TrySaveCaptured(path, data))
+                        _log("Authenticated Jellyfin jacket saved locally");
+            }
+        }
+        catch (FormatException) { }
+    }
 
     public bool IsPlayerSource(string? url)
     {
@@ -64,6 +124,14 @@ internal sealed class OfflineLibrary
             // A separate top-level popup must be redirected to this WebView2 by SurfaceForm.
             var destination = UniqueVideoPath(e.ResultFilePath);
             var sourceUrl = e.DownloadOperation.Uri;
+            var itemId = ItemIdFromDownload(sourceUrl);
+            if (itemId is Guid knownId)
+            {
+                if (!_coverDestinations.TryGetValue(knownId, out var paths))
+                    _coverDestinations[knownId] = paths = [];
+                paths.Add(destination);
+                RequestJacketCapture(core, sourceUrl);
+            }
             var partial = destination + ".jfdpartial";
             _activeDownloads.Add(destination);
             e.ResultFilePath = partial;
@@ -80,7 +148,11 @@ internal sealed class OfflineLibrary
                     {
                         File.Move(partial, destination);
                         _log("Offline download completed and saved");
-                        _ = OfflineJackets.TryDownloadJacketAsync(destination, sourceUrl, _log);
+                        if (itemId is Guid coverId &&
+                            _capturedCoverImages.TryGetValue(coverId, out var coverBytes))
+                            OfflineJackets.TrySaveCaptured(destination, coverBytes);
+                        if (!OfflineJackets.HasCover(destination))
+                            _ = OfflineJackets.TryDownloadJacketAsync(destination, sourceUrl, _log);
                     }
                     else
                     {
