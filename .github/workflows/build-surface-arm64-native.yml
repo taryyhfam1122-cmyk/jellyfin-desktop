@@ -18,6 +18,7 @@ on:
       - surface-arm64-native-v12
       - surface-arm64-native-v13
       - searchhub-surface-v15
+      - surface-arm64-v26-offline-c01
     paths:
       - 'surface-arm64/**'
       - '.github/workflows/build-surface-arm64-native.yml'
@@ -41,6 +42,9 @@ jobs:
           node --check surface-arm64/controls.js
           node --check surface-arm64/trickplay-preview.js
           node --check surface-arm64/searchhub.js
+          node --check surface-arm64/offline-controls.js
+          node --check surface-arm64/online-jacket-capture.js
+          node --check surface-arm64/offline-home.js
           node --test surface-arm64/tests/gestures.test.cjs
           node --test surface-arm64/tests/touch-runtime.test.cjs
           node --test surface-arm64/tests/preview-runtime.test.cjs
@@ -60,15 +64,19 @@ jobs:
           if (!(Test-Path publish/controls.js)) { throw 'Touch controls missing' }
           if (!(Test-Path publish/trickplay-preview.js)) { throw 'Trickplay module missing' }
           if (!(Test-Path publish/searchhub.js)) { throw 'SearchHub module missing' }
+          if (!(Test-Path publish/offline-controls.js)) { throw 'Offline touch gestures missing' }
+          if (!(Test-Path publish/offline-home.html)) { throw 'Offline catalog missing' }
+          if (!(Test-Path publish/offline-home.js)) { throw 'Offline catalog script missing' }
+          if (!(Test-Path publish/offline-player.html)) { throw 'Offline player UI missing' }
           if (!(Test-Path publish/runtimes/win-arm64/native/WebView2Loader.dll)) { throw 'ARM64 WebView2 loader missing' }
           $process = Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "ARM64 native runtime self-test failed: $($process.ExitCode)" }
           'PASS: ARM64 executable and native runtime; WebView2 initialization requires Surface test.' | Set-Content publish/validation.txt
       - name: Create Portable ZIP
         run: |
-          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-Native-Touch-SearchHub-v26.zip
+          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-v26-Offline-C01.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: jellyfin-surface-arm64-native-touch-searchhub-v26
-          path: JellyfinSurface-ARM64-Native-Touch-SearchHub-v26.zip
+          name: jellyfin-surface-arm64-v26-offline-c01
+          path: JellyfinSurface-ARM64-v26-Offline-C01.zip
           if-no-files-found: error
