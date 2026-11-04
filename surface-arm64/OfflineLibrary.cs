@@ -16,6 +16,7 @@ internal sealed class OfflineLibrary
     private readonly WebView2 _browser;
     private bool _offlinePage;
     private readonly string _playerPage;
+    private readonly string _homePage;
     private readonly HashSet<string> _activeDownloads = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Guid, List<string>> _coverDestinations = [];
     private readonly Dictionary<Guid, byte[]> _capturedCoverImages = [];
@@ -28,6 +29,7 @@ internal sealed class OfflineLibrary
         _log = log;
         Directory.CreateDirectory(_folder);
         _playerPage = Path.Combine(_folder, "_jfd_offline_player.html");
+        _homePage = Path.Combine(_folder, "_jfd_offline_home.html");
     }
 
     public bool IsOfflinePage => _offlinePage;
@@ -89,12 +91,13 @@ internal sealed class OfflineLibrary
         catch (FormatException) { }
     }
 
-    public bool IsPlayerSource(string? url)
+    public bool IsOfflineSource(string? url)
     {
         if (!_offlinePage || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || !uri.IsFile)
             return false;
-        return string.Equals(Path.GetFullPath(uri.LocalPath), Path.GetFullPath(_playerPage),
-            StringComparison.OrdinalIgnoreCase);
+        var fullPath = Path.GetFullPath(uri.LocalPath);
+        return string.Equals(fullPath, Path.GetFullPath(_playerPage), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fullPath, Path.GetFullPath(_homePage), StringComparison.OrdinalIgnoreCase);
     }
 
     private string UniqueVideoPath(string suggested)
@@ -306,6 +309,55 @@ internal sealed class OfflineLibrary
         form.Controls.Add(commands);
         list.DoubleClick += (_, _) => Play();
         form.ShowDialog();
+    }
+
+    public void ShowOfflineHome()
+    {
+        Directory.CreateDirectory(_folder);
+        var recent = new DirectoryInfo(_folder).EnumerateFiles()
+            .Where(f => new[] { ".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi" }
+                .Contains(f.Extension.ToLowerInvariant()))
+            .OrderByDescending(f => f.LastWriteTimeUtc).Take(18).ToList();
+        var cards = new StringBuilder();
+        foreach (var file in recent)
+        {
+            var cover = OfflineJackets.CoverPath(file.FullName);
+            var src = File.Exists(cover) ? WebUtility.HtmlEncode(new Uri(cover).AbsoluteUri) : "";
+            var name = WebUtility.HtmlEncode(Path.GetFileNameWithoutExtension(file.Name));
+            cards.Append("<div class='card'>");
+            if (src.Length > 0)
+                cards.Append("<img alt='' src='").Append(src).Append("'>");
+            else
+                cards.Append("<div class='blank'>NO COVER</div>");
+            cards.Append("<div class='name'>").Append(name).Append("</div></div>");
+        }
+        var html = """
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jellyfin Surface オフラインホーム</title>
+<style>
+body{margin:0;background:#0d1420;color:#e8f0fa;font:16px Segoe UI,sans-serif;padding:28px}
+h1{font-size:26px;margin:4px 0 14px}p{color:#a7bfd2;margin:0 0 20px}
+.actions{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:26px}
+button{background:#2a5176;color:white;border:0;border-radius:12px;padding:16px 24px;font:600 17px Segoe UI}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:18px;max-width:1000px}
+.card{background:#1b2838;padding:8px;border-radius:10px;overflow:hidden}
+.card img,.blank{height:180px;width:100%;object-fit:contain;background:#111a27;border-radius:8px}
+.blank{display:flex;align-items:center;justify-content:center;color:#94a8bb;font-size:13px}
+.name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:8px}
+</style>
+<h1>Jellyfin Surface ｜ オフラインホーム</h1>
+<p>動画は停止しました。通信がなくても「保存済み一覧」から再生できます。</p>
+<div class="actions">
+<button onclick="window.chrome.webview.postMessage({type:'jfd-offline-action',action:'list'})">保存済み一覧を開く</button>
+<button onclick="window.chrome.webview.postMessage({type:'jfd-offline-action',action:'online-home'})">Jellyfinホームへ接続</button>
+</div>
+<div class="grid">__JFD_CARDS__</div>
+</html>
+""".Replace("__JFD_CARDS__", cards.ToString(), StringComparison.Ordinal);
+        File.WriteAllText(_homePage, html, Encoding.UTF8);
+        _offlinePage = true;
+        _browser.CoreWebView2?.Navigate(new Uri(_homePage).AbsoluteUri);
     }
 
     private void PlayInApp(string path)
