@@ -415,6 +415,75 @@ internal sealed class OfflineLibrary
             "ダウンロード中", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
     }
 
+    public void ShowDownloadManager()
+    {
+        using var form = new Form {
+            Text = "Jellyfin ダウンロード管理",
+            Width = 740, Height = 460, MinimumSize = new Size(570, 350),
+            BackColor = Color.FromArgb(19, 27, 39), ForeColor = Color.White,
+            StartPosition = FormStartPosition.CenterParent
+        };
+        var list = new ListView {
+            Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true,
+            MultiSelect = false, BackColor = Color.FromArgb(27, 39, 55),
+            ForeColor = Color.White, Font = new Font("Segoe UI", 10)
+        };
+        list.Columns.Add("動画", 225);
+        list.Columns.Add("状態", 85);
+        list.Columns.Add("進捗", 90);
+        list.Columns.Add("受信 / 合計", 230);
+        var buttons = new FlowLayoutPanel {
+            Dock = DockStyle.Bottom, Height = 56, Padding = new Padding(8)
+        };
+        var cancel = new Button { Text = "選択したダウンロードを中止", Width = 235, Height = 38,
+            BackColor = Color.FromArgb(100, 49, 61), ForeColor = Color.White };
+        var close = new Button { Text = "閉じる", Width = 110, Height = 38,
+            BackColor = Color.FromArgb(51, 66, 84), ForeColor = Color.White };
+        cancel.Click += (_, _) => {
+            if (list.SelectedItems.Count != 1) return;
+            var key = list.SelectedItems[0].Tag as string;
+            if (key is null || !_downloadOperations.TryGetValue(key, out var op)) return;
+            if (MessageBox.Show(form, "選択したダウンロードを中止しますか？",
+                    "ダウンロード中止", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                op.Cancel();
+        };
+        close.Click += (_, _) => form.Close();
+        buttons.Controls.Add(cancel);
+        buttons.Controls.Add(close);
+        form.Controls.Add(list);
+        form.Controls.Add(buttons);
+        void Refresh()
+        {
+            var previous = list.SelectedItems.Count == 1 ? list.SelectedItems[0].Tag as string : null;
+            list.BeginUpdate();
+            try {
+                list.Items.Clear();
+                foreach (var pair in _downloadOperations.ToArray())
+                {
+                    var op = pair.Value;
+                    var total = op.TotalBytesToReceive;
+                    var received = op.BytesReceived;
+                    var percent = total > 0 ? (100d * received / total).ToString("N0") + "%" : "不明";
+                    var size = (received / 1048576d).ToString("N1") + " MB / " +
+                        (total > 0 ? (total / 1048576d).ToString("N1") + " MB" : "不明");
+                    var row = new ListViewItem(Path.GetFileName(pair.Key)) { Tag = pair.Key };
+                    row.SubItems.Add(op.State.ToString());
+                    row.SubItems.Add(percent);
+                    row.SubItems.Add(size);
+                    list.Items.Add(row);
+                    if (string.Equals(previous, pair.Key, StringComparison.OrdinalIgnoreCase))
+                        row.Selected = true;
+                }
+                if (list.Items.Count == 0) list.Items.Add(new ListViewItem("現在ダウンロード中の動画はありません"));
+            } finally { list.EndUpdate(); }
+        }
+        using var timer = new System.Windows.Forms.Timer { Interval = 600 };
+        timer.Tick += (_, _) => Refresh();
+        form.Shown += (_, _) => { Refresh(); timer.Start(); };
+        form.FormClosing += (_, _) => timer.Stop();
+        form.ShowDialog(_browser.FindForm());
+    }
+
     public void ReportDownloads()
     {
         if (_browser.CoreWebView2 is null || !_offlinePage) return;
