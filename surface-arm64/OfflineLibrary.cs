@@ -402,7 +402,7 @@ internal sealed class OfflineLibrary
         ShowOfflineHome();
     }
 
-    public void ShowOfflineHome()
+    public void ShowOfflineHome(bool resetToRoot = false)
     {
         Directory.CreateDirectory(_folder);
         var videos = new DirectoryInfo(_folder).EnumerateFiles()
@@ -429,10 +429,12 @@ internal sealed class OfflineLibrary
             };
         }).ToList();
 
+        var script = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "offline-home.js"));
+        if (resetToRoot)
+            script = "try { sessionStorage.removeItem('jfd-offline-v26-selection'); } catch {}" + Environment.NewLine + script;
         var html = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "offline-home.html"))
             .Replace("__JFD_ITEMS__", JsonSerializer.Serialize(cards), StringComparison.Ordinal)
-            .Replace("__JFD_SCRIPT__", File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "offline-home.js")),
-                StringComparison.Ordinal);
+            .Replace("__JFD_SCRIPT__", script, StringComparison.Ordinal);
         File.WriteAllText(_homePage, html, Encoding.UTF8);
         _offlinePage = true;
         _browser.CoreWebView2?.Navigate(new Uri(_homePage).AbsoluteUri);
