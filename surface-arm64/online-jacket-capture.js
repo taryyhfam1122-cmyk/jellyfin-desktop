@@ -22,6 +22,30 @@
                 const selected = matching || (servers.length === 1 ? servers[0] : null);
                 if (typeof selected?.AccessToken === 'string') token = selected.AccessToken;
             }
+            // Store only title/folder names. The access token stays inside the
+            // authenticated WebView and is NEVER included in the native message.
+            try {
+                const details = new URL('/Items/' + itemId, location.origin);
+                details.searchParams.set('Fields', 'Path');
+                const infoResponse = await fetch(details.href, {
+                    credentials: 'same-origin',
+                    headers: token ? { 'X-Emby-Token': token } : {}
+                });
+                if (infoResponse.ok) {
+                    const item = await infoResponse.json();
+                    const parts = typeof item.Path === 'string'
+                        ? item.Path.replace(/\\/g, '/').split('/').filter(Boolean) : [];
+                    const rootIndex = parts.findIndex(p =>
+                        /^(JAV(?:\(1280\)|\(Un\)|\(UN\))?|ANIME|3D)$/i.test(p));
+                    const folders = rootIndex >= 0 ? parts.slice(rootIndex, -1).slice(0,14) : [];
+                    window.chrome?.webview?.postMessage({
+                        type:'jfd-offline-meta', itemId,
+                        title:typeof item.Name==='string'?item.Name.slice(0,512):'',
+                        folders
+                    });
+                }
+            } catch (_) { /* No metadata: file remains visible under 未分類. */ }
+
             const url = new URL('/Items/' + itemId + '/Images/Primary', location.origin);
             url.searchParams.set('maxWidth', '480');
             url.searchParams.set('quality', '80');
