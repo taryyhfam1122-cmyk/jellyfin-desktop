@@ -138,7 +138,6 @@
 
     area.addEventListener('pointerdown', e => {
         if (drag || !e.isPrimary || e.button !== 0) return;
-        if (e.pointerType === 'mouse' && e.detail > 1) return;
         const rect = area.getBoundingClientRect();
         drag = { id: e.pointerId, rect, startX: e.clientX - rect.left,
             startY: e.clientY - rect.top, startTime: video.currentTime || 0,
