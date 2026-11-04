@@ -298,7 +298,15 @@ public sealed class SurfaceForm : Form
             File.WriteAllText(Path.Combine(_appData, "server.txt"), _server.Text);
             if (_scriptId is not null) _browser.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(_scriptId);
             var preview = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "trickplay-preview.js"));
-            var source = preview + "\n" + await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "controls.js"));
+#if JFD_LAYOUT_DISABLED
+            // A/B diagnostic build: keep #80 intact except for this injection.
+            var layout = "";
+#elif JFD_LAYOUT_DOM_READY
+            var layout = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "online-player-layout-dom-ready.js"));
+#else
+            var layout = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "online-player-layout.js"));
+#endif
+            var source = layout + "\n" + preview + "\n" + await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "controls.js"));
             source = source.Replace("\"__JFD_SERVER_ORIGIN__\"", JsonSerializer.Serialize(_server.Text), StringComparison.Ordinal);
             _scriptId = await _browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(source);
             _browser.CoreWebView2.Navigate(new Uri(server, "/web/").ToString());

@@ -1,0 +1,83 @@
+name: verify-surface-layout-ab
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - surface-arm64-layout-ab-verify
+    paths:
+      - 'surface-arm64/**'
+      - '.github/workflows/verify-surface-layout-ab.yml'
+
+jobs:
+  compare-arm64:
+    name: ARM64 comparison (${{ matrix.mode }})
+    runs-on: windows-11-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [original, disabled, dom-ready]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify unchanged gesture and offline implementations
+        run: |
+          git diff --exit-code dea57e975d94ba2bf51179566b5d8e2d66388f4d HEAD -- surface-arm64/controls.js surface-arm64/trickplay-preview.js surface-arm64/OfflineLibrary.cs surface-arm64/OfflineJackets.cs surface-arm64/offline-controls.js surface-arm64/online-jacket-capture.js native src
+          if ($LASTEXITCODE -ne 0) { throw 'Protected implementation differs from #79' }
+          git diff --exit-code c1fff7bff6684ed0880741cf266e6609c192e0ee HEAD -- surface-arm64/online-player-layout.js
+          if ($LASTEXITCODE -ne 0) { throw 'Original #80 layout script changed' }
+      - name: Verify source and existing regressions
+        run: |
+          function node {
+            & (Get-Command node.exe).Source @args
+            if ($LASTEXITCODE -ne 0) { throw "Node validation failed: $args" }
+          }
+          Get-ChildItem surface-arm64/*.js | ForEach-Object { node --check $_.FullName }
+          node --test surface-arm64/tests/gestures.test.cjs surface-arm64/tests/touch-runtime.test.cjs surface-arm64/tests/preview-runtime.test.cjs
+          node --test tests/test_mouse_controls.cjs tests/test_fullscreen_trickplay.cjs tests/test_preview_v02.cjs
+      - name: Verify DocumentCreated and touch delivery in Edge
+        run: |
+          npm install --prefix "$env:RUNNER_TEMP/jfd-browser-tests" --no-audit --no-fund playwright-core@1.62.1
+          if ($LASTEXITCODE -ne 0) { throw 'Browser test dependency installation failed' }
+          $env:NODE_PATH = "$env:RUNNER_TEMP/jfd-browser-tests/node_modules"
+          node --test --test-reporter=tap surface-arm64/tests/online-player-layout.test.cjs surface-arm64/tests/layout-injection-integration.test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Layout comparison regression failed' }
+      - name: Publish isolated comparison variant
+        run: |
+          dotnet publish surface-arm64/JellyfinSurface.csproj -c Release -r win-arm64 --self-contained true -p:OnlineLayoutComparison=${{ matrix.mode }} -o publish
+          if ($LASTEXITCODE -ne 0) { throw 'ARM64 publish failed' }
+          $required = @('JellyfinSurfaceARM64.exe', 'controls.js', 'trickplay-preview.js', 'online-player-layout.js', 'online-player-layout-dom-ready.js', 'offline-controls.js', 'online-jacket-capture.js', 'runtimes/win-arm64/native/WebView2Loader.dll')
+          foreach ($file in $required) {
+            if (!(Test-Path (Join-Path publish $file))) { throw "Missing: $file" }
+          }
+          $process = Start-Process -FilePath (Join-Path (Resolve-Path publish).Path 'JellyfinSurfaceARM64.exe') -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'ARM64 native self-test failed' }
+      - name: Label and package experimental build
+        run: |
+          $record = [ordered]@{
+            purpose = 'EXPERIMENTAL comparison only; not a stable release'
+            mode = '${{ matrix.mode }}'
+            commit = '${{ github.sha }}'
+            baseline79 = 'dea57e975d94ba2bf51179566b5d8e2d66388f4d'
+            comparison80 = 'c1fff7bff6684ed0880741cf266e6609c192e0ee'
+            controls_sha256 = (Get-FileHash publish/controls.js -Algorithm SHA256).Hash
+            original_layout_sha256 = (Get-FileHash publish/online-player-layout.js -Algorithm SHA256).Hash
+          }
+          $record | ConvertTo-Json | Set-Content publish/comparison.json
+          Copy-Item surface-arm64/LAYOUT_COMPARISON.md publish/README-COMPARISON.md
+          Compress-Archive -Path publish/* -DestinationPath JellyfinSurface-ARM64-layout-${{ matrix.mode }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jellyfin-surface-arm64-layout-${{ matrix.mode }}
+          path: JellyfinSurface-ARM64-layout-${{ matrix.mode }}.zip
+          if-no-files-found: error
