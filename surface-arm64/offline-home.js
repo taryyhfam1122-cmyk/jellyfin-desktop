@@ -76,10 +76,15 @@ function renderCards(resetScroll=false){
    const title=document.createElement('div');title.className='title';title.textContent=entry.title;
    card.append(cover,title);tapCard(entry,card);cards.append(card);
  }
- if(resetScroll)cards.scrollTop=0;
+ const scrollKey='scroll-'+pathKey(selection)+':'+q+':'+mode;
+ cards.scrollTop=resetScroll?0:Number(readState(scrollKey,0))||0;
  $('summary').textContent='保存済み '+records.length+'作品 / '+(records.reduce((sum,x)=>sum+x.bytes,0)/1024/1024/1024).toFixed(2)+' GB • NASの元ファイルは変更されません';
 }
 $('search').addEventListener('input',()=>renderCards(true));$('sort').addEventListener('change',()=>renderCards(true));
+$('cards').addEventListener('scroll',()=>{
+ const q=$('search').value.trim().toLocaleLowerCase(), mode=$('sort').value;
+ saveState('scroll-'+pathKey(selection)+':'+q+':'+mode,$('cards').scrollTop);
+},{passive:true});
 $('manage').onclick=()=>send('manage');$('online').onclick=()=>send('online-home');
 $('detail-close').onclick=()=>$('details').close();
 $('detail-play').onclick=()=>{if(chosen)send('play',chosen.file);};
