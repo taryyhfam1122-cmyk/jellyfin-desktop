@@ -363,6 +363,13 @@ public sealed class SurfaceForm : Form
                                 _offlineLibrary?.ChangeCover(file); break;
                             case "delete":
                                 _offlineLibrary?.DeleteSaved(file); break;
+                            case "delete-many":
+                                _offlineLibrary?.DeleteMany(root); break;
+                            case "downloads":
+                                _offlineLibrary?.ReportDownloads(); break;
+                            case "exit":
+                                if (_offlineLibrary?.ConfirmClose() != false) Close();
+                                break;
                             case "video-fullscreen":
                                 SetOfflineVideoExpanded(!_offlineVideoExpanded); break;
                         }
