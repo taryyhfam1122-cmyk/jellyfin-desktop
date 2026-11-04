@@ -130,9 +130,9 @@ test('longer swipe holds at faster rate; reversing swipe seeks backward',()=>{
     h.advance(250);
     assert.deepEqual(h.seeks,[322.5,373.125]);
     move(h,200);
-    assert.deepEqual(h.seeks,[322.5,373.125,110.625],'new leftward swipe uses same start with accumulated hold');
+    assert.deepEqual(h.seeks,[322.5,373.125],'same-tick reversal waits for the existing 250ms throttle');
     h.advance(250);
-    assert.deepEqual(h.seeks,[322.5,373.125,110.625,95.625]);
+    assert.deepEqual(h.seeks,[322.5,373.125,95.625],'next tick includes accumulated hold and reverse travel');
     end(h,200);
 });
 test('stationary long press on right third starts fast forward after 500ms',()=>{
@@ -176,6 +176,8 @@ test('side short tap retains play pause behavior',()=>{
     h.advance(200);
     end(h,900);
     assert.deepEqual(h.seeks,[]);
+    assert.equal(h.video.paused,false,'single tap waits for double-tap recognition');
+    h.advance(400);
     assert.equal(h.video.paused,true);
     assert.equal(h.activeTimers(),0);
 });
