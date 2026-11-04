@@ -35,6 +35,7 @@ public sealed class SurfaceForm : Form
         // Jellyfin page's floating search button or fullscreen CSS.
         var search = Button("検索一覧", 96, () => _ = OpenSearchHubAsync());
         var offline = Button("保存済み", 105, OpenSaved);
+        var downloads = Button("進捗", 72, () => _offlineLibrary?.ShowDownloadManager());
         var connect = Button("接続", 66, () => _ = ConnectAsync());
         var refresh = Button("更新", 65, () => _browser.Reload());
         var full = Button("全画面", 82, ToggleFullscreen);
@@ -44,10 +45,11 @@ public sealed class SurfaceForm : Form
         var fullSearch = Button("検索一覧", 100, () => _ = OpenSearchHubAsync());
         var fullRefresh = Button("更新 ↻", 100, () => _browser.Reload());
         var fullOffline = Button("保存済み", 100, OpenSaved);
+        var fullDownloads = Button("進捗", 80, () => _offlineLibrary?.ShowDownloadManager());
         var fullExit = Button("アプリを終了 ✕", 148, Close);
 
-        _toolbar.Controls.AddRange([back, home, search, offline, _server, connect, refresh, full, exit]);
-        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullSearch, fullOffline, fullRefresh, fullExit]);
+        _toolbar.Controls.AddRange([back, home, search, offline, downloads, _server, connect, refresh, full, exit]);
+        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullSearch, fullOffline, fullDownloads, fullRefresh, fullExit]);
         Controls.Add(_browser);
         Controls.Add(_toolbar);
         Controls.Add(_fullscreenBar);
