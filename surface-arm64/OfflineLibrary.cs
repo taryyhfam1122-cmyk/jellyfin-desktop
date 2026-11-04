@@ -32,6 +32,45 @@ internal sealed class OfflineLibrary
         _homePage = Path.Combine(_folder, "_jfd_offline_home.html");
     }
 
+    private sealed class OfflineVideoMeta
+    {
+        public string Title { get; set; } = "";
+        public string[] Folders { get; set; } = [];
+    }
+    private readonly Dictionary<Guid, OfflineVideoMeta> _capturedMeta = [];
+
+    public void AcceptMetadataMessage(JsonElement root)
+    {
+        if (!root.TryGetProperty("itemId", out var field) ||
+            !Guid.TryParse(field.GetString(), out var id)) return;
+        var title = root.TryGetProperty("title", out var name) && name.ValueKind == JsonValueKind.String
+            ? (name.GetString() ?? "").Trim() : "";
+        if (title.Length > 512) title = title[..512];
+        var folders = new List<string>();
+        if (root.TryGetProperty("folders", out var fieldFolders) && fieldFolders.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var segment in fieldFolders.EnumerateArray().Take(14))
+            {
+                if (segment.ValueKind != JsonValueKind.String) continue;
+                var clean = (segment.GetString() ?? "").Trim();
+                if (clean.Length is > 0 and <= 120 && clean is not ("." or ".."))
+                    folders.Add(clean);
+            }
+        }
+        var meta = new OfflineVideoMeta { Title = title, Folders = folders.ToArray() };
+        _capturedMeta[id] = meta;
+        if (_capturedMeta.Count > 40) _capturedMeta.Remove(_capturedMeta.Keys.First());
+        if (_coverDestinations.TryGetValue(id, out var paths))
+            foreach (var destination in paths)
+                if (File.Exists(destination)) SaveMeta(destination, meta);
+    }
+
+    private void SaveMeta(string path, OfflineVideoMeta meta)
+    {
+        try { File.WriteAllText(path + ".jfd-meta.json", JsonSerializer.Serialize(meta)); }
+        catch (Exception ex) { _log("Offline metadata write error: " + ex.GetType().Name); }
+    }
+
     public bool IsOfflinePage => _offlinePage;
     public void EnterServer() => _offlinePage = false;
     public void SetServer(Uri server) => _serverOrigin = server;
@@ -128,6 +167,8 @@ internal sealed class OfflineLibrary
             var destination = UniqueVideoPath(e.ResultFilePath);
             var sourceUrl = e.DownloadOperation.Uri;
             var itemId = ItemIdFromDownload(sourceUrl);
+            // Don't intercept non-Jellyfin downloads, which belong to the browser.
+            if (itemId is null) return;
             if (itemId is Guid knownId)
             {
                 if (!_coverDestinations.TryGetValue(knownId, out var paths))
@@ -150,6 +191,8 @@ internal sealed class OfflineLibrary
                     if (state == CoreWebView2DownloadState.Completed && File.Exists(partial))
                     {
                         File.Move(partial, destination);
+                        if (itemId is Guid metaId && _capturedMeta.TryGetValue(metaId, out var info))
+                            SaveMeta(destination, info);
                         _log("Offline download completed and saved");
                         if (itemId is Guid coverId &&
                             _capturedCoverImages.TryGetValue(coverId, out var coverBytes))
@@ -309,52 +352,87 @@ internal sealed class OfflineLibrary
         form.Controls.Add(commands);
         list.DoubleClick += (_, _) => Play();
         form.ShowDialog();
+        ShowOfflineHome();
+    }
+
+    private static readonly HashSet<string> VideoExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi" };
+
+    private string? ResolveFile(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || !name.Equals(Path.GetFileName(name), StringComparison.Ordinal) ||
+            !VideoExtensions.Contains(Path.GetExtension(name))) return null;
+        var path = Path.GetFullPath(Path.Combine(_folder, name));
+        if (!string.Equals(Path.GetDirectoryName(path), Path.GetFullPath(_folder), StringComparison.OrdinalIgnoreCase))
+            return null;
+        return File.Exists(path) ? path : null;
+    }
+
+    public void PlaySaved(string? name)
+    {
+        var path = ResolveFile(name);
+        if (path is not null) PlayInApp(path);
+    }
+
+    public void ChangeCover(string? name)
+    {
+        var path = ResolveFile(name);
+        if (path is null) return;
+        using var picker = new OpenFileDialog { Title = "ジャケット画像を選択",
+            Filter = "画像|*.jpg;*.jpeg;*.png;*.bmp" };
+        if (picker.ShowDialog() != DialogResult.OK) return;
+        try { OfflineJackets.SaveManual(path, picker.FileName); }
+        catch (Exception ex) { _log("Offline cover change failed: " + ex.GetType().Name); }
+        ShowOfflineHome();
+    }
+
+    public void DeleteSaved(string? name)
+    {
+        var path = ResolveFile(name);
+        if (path is null) return;
+        if (MessageBox.Show("Surface内の保存済み動画を削除します。NAS上の元ファイルは削除しません。よろしいですか？",
+            "オフライン動画の削除", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        try
+        {
+            File.Delete(path);
+            if (File.Exists(OfflineJackets.CoverPath(path))) File.Delete(OfflineJackets.CoverPath(path));
+            if (File.Exists(path + ".jfd-meta.json")) File.Delete(path + ".jfd-meta.json");
+        }
+        catch (Exception ex) { _log("Offline deletion failed: " + ex.GetType().Name); }
+        ShowOfflineHome();
     }
 
     public void ShowOfflineHome()
     {
         Directory.CreateDirectory(_folder);
-        var recent = new DirectoryInfo(_folder).EnumerateFiles()
-            .Where(f => new[] { ".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi" }
-                .Contains(f.Extension.ToLowerInvariant()))
-            .OrderByDescending(f => f.LastWriteTimeUtc).Take(18).ToList();
-        var cards = new StringBuilder();
-        foreach (var file in recent)
+        var videos = new DirectoryInfo(_folder).EnumerateFiles()
+            .Where(f => VideoExtensions.Contains(f.Extension)).ToList();
+        var cards = videos.Select(file =>
         {
-            var cover = OfflineJackets.CoverPath(file.FullName);
-            var src = File.Exists(cover) ? WebUtility.HtmlEncode(new Uri(cover).AbsoluteUri) : "";
-            var name = WebUtility.HtmlEncode(Path.GetFileNameWithoutExtension(file.Name));
-            cards.Append("<div class='card'>");
-            if (src.Length > 0)
-                cards.Append("<img alt='' src='").Append(src).Append("'>");
-            else
-                cards.Append("<div class='blank'>NO COVER</div>");
-            cards.Append("<div class='name'>").Append(name).Append("</div></div>");
-        }
-        var html = """
-<!doctype html>
-<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Jellyfin Surface オフラインホーム</title>
-<style>
-body{margin:0;background:#0d1420;color:#e8f0fa;font:16px Segoe UI,sans-serif;padding:28px}
-h1{font-size:26px;margin:4px 0 14px}p{color:#a7bfd2;margin:0 0 20px}
-.actions{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:26px}
-button{background:#2a5176;color:white;border:0;border-radius:12px;padding:16px 24px;font:600 17px Segoe UI}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:18px;max-width:1000px}
-.card{background:#1b2838;padding:8px;border-radius:10px;overflow:hidden}
-.card img,.blank{height:180px;width:100%;object-fit:contain;background:#111a27;border-radius:8px}
-.blank{display:flex;align-items:center;justify-content:center;color:#94a8bb;font-size:13px}
-.name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:8px}
-</style>
-<h1>Jellyfin Surface ｜ オフラインホーム</h1>
-<p>動画は停止しました。通信がなくても「保存済み一覧」から再生できます。</p>
-<div class="actions">
-<button onclick="window.chrome.webview.postMessage({type:'jfd-offline-action',action:'list'})">保存済み一覧を開く</button>
-<button onclick="window.chrome.webview.postMessage({type:'jfd-offline-action',action:'online-home'})">Jellyfinホームへ接続</button>
-</div>
-<div class="grid">__JFD_CARDS__</div>
-</html>
-""".Replace("__JFD_CARDS__", cards.ToString(), StringComparison.Ordinal);
+            OfflineVideoMeta? meta = null;
+            try
+            {
+                if (File.Exists(file.FullName + ".jfd-meta.json"))
+                    meta = JsonSerializer.Deserialize<OfflineVideoMeta>(
+                        File.ReadAllText(file.FullName + ".jfd-meta.json"));
+            }
+            catch (Exception ex) { _log("Offline metadata invalid: " + ex.GetType().Name); }
+            var jacket = OfflineJackets.CoverPath(file.FullName);
+            var folders = meta?.Folders?.Length > 0 ? meta.Folders : ["未分類"];
+            return new {
+                file = file.Name,
+                title = string.IsNullOrWhiteSpace(meta?.Title) ? Path.GetFileNameWithoutExtension(file.Name) : meta!.Title,
+                folders,
+                cover = File.Exists(jacket) ? new Uri(jacket).AbsoluteUri : "",
+                bytes = file.Length,
+                saved = new DateTimeOffset(file.LastWriteTimeUtc).ToUnixTimeSeconds()
+            };
+        }).ToList();
+
+        var html = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "offline-home.html"))
+            .Replace("__JFD_ITEMS__", JsonSerializer.Serialize(cards), StringComparison.Ordinal)
+            .Replace("__JFD_SCRIPT__", File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "offline-home.js")),
+                StringComparison.Ordinal);
         File.WriteAllText(_homePage, html, Encoding.UTF8);
         _offlinePage = true;
         _browser.CoreWebView2?.Navigate(new Uri(_homePage).AbsoluteUri);
@@ -367,53 +445,7 @@ button{background:#2a5176;color:white;border:0;border-radius:12px;padding:16px 2
         var safeUrl = WebUtility.HtmlEncode(new Uri(path).AbsoluteUri);
         var safeName = WebUtility.HtmlEncode(Path.GetFileName(path));
         var script = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "offline-controls.js"));
-        var html = """
-<!doctype html>
-<html lang="ja">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-html,body{margin:0;height:100%;background:#080b11;color:#fff;font:16px Segoe UI,sans-serif;overflow:hidden}
-*{box-sizing:border-box}button{border:0;border-radius:8px;background:#263749;color:white;padding:10px 14px;font:inherit;cursor:pointer;min-height:42px}
-button:active{background:#405a75}
-header{height:54px;padding:6px 12px;display:flex;align-items:center;gap:12px;background:#121c28}
-#jfd-expanded-tools{display:none;position:fixed;top:12px;right:12px;z-index:9999;gap:8px;opacity:.85}
-.jfd-expanded header,.jfd-expanded footer{display:none}
-.jfd-expanded #jfd-expanded-tools{display:flex}
-.jfd-expanded #jfd-offline-touch{height:100vh}
-.jfd-expanded video{height:100%;width:100%}
-#jfd-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-#jfd-offline-touch{position:relative;height:calc(100vh - 154px);background:black;touch-action:none;overflow:hidden;user-select:none}
-video{width:100%;height:100%;object-fit:contain;pointer-events:none}
-#jfd-offline-indicator{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);background:#111e2bee;border:1px solid #768da0a0;
- border-radius:14px;padding:13px 20px;pointer-events:none;font-weight:600;font-size:22px;white-space:nowrap}
-#jfd-offline-indicator[hidden]{display:none}
-footer{height:100px;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:8px 12px;background:#141e2a}
-#jfd-offline-seek{width:100%;height:24px;accent-color:#81bbff;touch-action:auto}
-#jfd-controls{display:flex;gap:8px;align-items:center}
-#jfd-offline-clock{margin-left:auto;font-variant-numeric:tabular-nums;font-size:14px;white-space:nowrap}
-#jfd-offline-rate{min-width:60px;text-align:center}
-@media(max-width:650px){#jfd-controls{gap:4px}button{font-size:13px;padding:7px}#jfd-offline-clock{font-size:12px}}
-</style>
-</head>
-<body>
-<header><button id="jfd-offline-home">■ 停止してホーム</button><button id="jfd-offline-back">← 保存済み</button>
-<button id="jfd-offline-fullscreen">⛶ 動画全画面</button><div id="jfd-title">__JFD_TITLE__</div></header>
-<div id="jfd-expanded-tools"><button id="jfd-offline-expanded-home">■ ホームへ</button>
-<button id="jfd-offline-expanded-exit">↙ 全画面解除</button></div>
-<div id="jfd-offline-touch"><video id="jfd-offline-video" autoplay playsinline preload="metadata" src="__JFD_FILE__"></video>
-<div id="jfd-offline-indicator" hidden></div></div>
-<footer>
-<input id="jfd-offline-seek" type="range" min="0" max="1" step="0.1" value="0" aria-label="再生位置">
-<div id="jfd-controls">
-<button id="jfd-offline-rewind">◀ 10秒</button>
-<button id="jfd-offline-play">▶ 再生</button>
-<button id="jfd-offline-forward">10秒 ▶</button>
-<span id="jfd-offline-rate">1.00×</span>
-<span id="jfd-offline-clock">0:00 / 0:00</span>
-</div>
-</footer><script>__JFD_SCRIPT__</script>
-</body></html>
-""";
+        var html = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "offline-player.html"));
         // Trusted script is inserted before untrusted filenames/paths are HTML-encoded.
         html = html.Replace("__JFD_SCRIPT__", script, StringComparison.Ordinal)
             .Replace("__JFD_TITLE__", safeName, StringComparison.Ordinal)
