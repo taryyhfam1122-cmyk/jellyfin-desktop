@@ -112,11 +112,19 @@ public sealed class SurfaceForm : Form
         if (core is null || _serverUri is null) return;
         if (_offlineLibrary?.IsOfflinePage == true)
         {
-            // Stop the local file before leaving the offline player.
-            _ = core.ExecuteScriptAsync("document.getElementById('jfd-offline-video')?.pause()");
+            // Stop the local video BEFORE testing connectivity or navigating.
+            await core.ExecuteScriptAsync("document.getElementById('jfd-offline-video')?.pause()");
             if (_offlineVideoExpanded) SetOfflineVideoExpanded(false);
-            _offlineLibrary.EnterServer();
-            core.Navigate(new Uri(_serverUri, "/web/#/home").ToString());
+            if (await ServerIsOnlineAsync(_serverUri))
+            {
+                _offlineLibrary.EnterServer();
+                core.Navigate(new Uri(_serverUri, "/web/#/home").ToString());
+            }
+            else
+            {
+                // True offline operation: never leave the user on a failed web page.
+                _offlineLibrary.ShowOfflineHome();
+            }
             return;
         }
         try
@@ -171,7 +179,7 @@ public sealed class SurfaceForm : Form
             {
                 if (_serverUri is null) return;
                 // Only our generated offline player page is trusted to load as file://.
-                if (_offlineLibrary?.IsPlayerSource(e.Uri) == true)
+                if (_offlineLibrary?.IsOfflineSource(e.Uri) == true)
                     return;
                 if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var next) &&
                     (next.Scheme != _serverUri.Scheme || next.Authority != _serverUri.Authority))
@@ -185,7 +193,7 @@ public sealed class SurfaceForm : Form
             {
                 // Accept only fixed diagnostic events from the selected Jellyfin origin.
                 // Never log the message body, media URL, access token or username.
-                if (_offlineLibrary?.IsPlayerSource(e.Source) == true)
+                if (_offlineLibrary?.IsOfflineSource(e.Source) == true)
                 {
                     try
                     {
@@ -200,6 +208,7 @@ public sealed class SurfaceForm : Form
                                 OpenSaved();
                                 break;
                             case "home":
+                            case "online-home":
                                 _ = StopAndHomeAsync();
                                 break;
                             case "video-fullscreen":
@@ -299,6 +308,18 @@ public sealed class SurfaceForm : Form
             Log(ex.GetType().Name + ": " + ex.Message);
             MessageBox.Show("Jellyfinへの接続処理に失敗しました。\n" + ex.Message, "Jellyfin Surface");
         }
+    }
+
+    private static async Task<bool> ServerIsOnlineAsync(Uri server)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            using var response = await client.GetAsync(new Uri(server, "/System/Info/Public"),
+                HttpCompletionOption.ResponseHeadersRead);
+            return response.IsSuccessStatusCode;
+        }
+        catch { return false; }
     }
 
     private bool IsJellyfinDownloadUrl(string? raw)
