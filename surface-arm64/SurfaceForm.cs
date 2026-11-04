@@ -159,6 +159,7 @@ public sealed class SurfaceForm : Form
                     // Open the download inside our authenticated WebView2, not Edge.
                     // This causes DownloadStarting to select the private offline folder.
                     Log("Intercepted Jellyfin download popup");
+                    _offlineLibrary?.RequestJacketCapture(core, e.Uri);
                     core.Navigate(e.Uri);
                 }
                 else
@@ -217,6 +218,11 @@ public sealed class SurfaceForm : Form
                     using var doc = JsonDocument.Parse(e.WebMessageAsJson);
                     var root = doc.RootElement;
                     if (!root.TryGetProperty("type", out var type)) return;
+                    if (type.GetString() == "jfd-cover-image")
+                    {
+                        _offlineLibrary?.AcceptJacketMessage(root);
+                        return;
+                    }
                     if (type.GetString() == "jfd-player-action")
                     {
                         if (root.TryGetProperty("action", out var action))
@@ -278,6 +284,7 @@ public sealed class SurfaceForm : Form
         {
             _offlineLibrary?.EnterServer();
             _serverUri = server;
+            _offlineLibrary?.SetServer(server);
             _server.Text = server.GetLeftPart(UriPartial.Authority);
             File.WriteAllText(Path.Combine(_appData, "server.txt"), _server.Text);
             if (_scriptId is not null) _browser.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(_scriptId);
