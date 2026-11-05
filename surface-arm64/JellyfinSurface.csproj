@@ -18,6 +18,7 @@
     <None Update="controls.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="trickplay-preview.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="searchhub.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="c02-home-tidy.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="offline-controls.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="online-jacket-capture.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="offline-home.js" CopyToOutputDirectory="PreserveNewest" />
