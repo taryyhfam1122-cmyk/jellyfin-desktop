@@ -5,7 +5,7 @@ using System.Text;
 namespace JellyfinSurface;
 
 /// <summary>
-/// In-application native playback for AVI and other formats WebView2 cannot decode.
+/// The single in-application native playback path for all supported offline video formats.
 /// The libmpv LGPL build is distributed separately in the portable ZIP.
 /// The calling app keeps its offline catalog open behind this modal form.
 /// </summary>
@@ -87,7 +87,7 @@ internal sealed class NativeMpvPlayer : Form
         {
             MessageBox.Show("アプリ内再生エンジンを開始できませんでした。\n" +
                 ex.GetType().Name + ": " + ex.Message,
-                "AVIの再生", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                "動画の再生", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
     }
@@ -121,13 +121,18 @@ internal sealed class NativeMpvPlayer : Form
         {
             var speed = Read("speed", 1);
             if (speed <= 0) speed = 1;
-            speed = speed >= 2 ? 0.75 : Math.Round(speed + 0.25, 2);
+            speed = speed >= 4 ? 1.0 : Math.Round(speed + 0.05, 2);
             Set("speed", speed);
         };
         _volume.Click += (_, _) =>
         {
             var volume = Read("volume", 100);
             Set("volume", volume < 10 ? 100 : Math.Max(0, volume - 10));
+        };
+        _screen.MouseWheel += (_, e) =>
+        {
+            var volume = Read("volume", 100);
+            Set("volume", Math.Clamp(volume + (e.Delta > 0 ? 5 : -5), 0, 100));
         };
         _seek.MouseDown += (_, _) => _scrubbing = true;
         _seek.MouseUp += (_, _) =>
@@ -137,7 +142,16 @@ internal sealed class NativeMpvPlayer : Form
             if (duration > 0) Set("time-pos", duration * _seek.Value / 1000d);
         };
         _timer.Tick += (_, _) => UpdateControls();
-        Shown += (_, _) => StartNative();
+        Shown += (_, _) =>
+        {
+            try { StartNative(); }
+            catch (Exception ex)
+            {
+                MessageBox.Show("動画再生の開始に失敗しました。\\n" + ex.Message,
+                    "再生エラー", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Close();
+            }
+        };
         FormClosing += (_, _) => _timer.Stop();
         FormClosed += (_, _) => StopNative();
         KeyDown += (_, e) =>
