@@ -29,6 +29,10 @@ public sealed class SurfaceForm : Form
     private OfflineLibrary? _offlineLibrary;
     private bool _offlineVideoExpanded;
     private bool _onlineVideoActive;
+    private bool _onlineLibraryReady;
+    private bool _librariesLoading;
+    private string _loadedLibrariesFor = "";
+    private NativeLibrarySidebar _sidebar = null!;
 
     public SurfaceForm()
     {
@@ -58,9 +62,21 @@ public sealed class SurfaceForm : Form
         var fullDownloads = Button("⇩ 進捗", 94, () => _offlineLibrary?.ShowDownloadManager());
         var fullExit = Button("⏻", 50, Close);
 
-        _toolbar.Controls.AddRange([Brand(), back, home, search, offline, downloads, _server, connect, refresh, full, exit]);
-        _fullscreenBar.Controls.AddRange([Brand(), fullHome, fullSearch, fullOffline, fullDownloads, _serverStatus, fullRefresh, leaveFullscreen, fullExit]);
+        // The left sidebar replaces the temporary standalone home dashboard.
+        // The WebView2 itself still renders Jellyfin's ORIGINAL home, libraries,
+        // resume row, favorites, item details and playback.
+        _sidebar = new NativeLibrarySidebar(
+            NavigateHomeDirect,
+            () => _ = OpenSearchHubAsync(),
+            OpenSaved,
+            () => _offlineLibrary?.ShowDownloadManager(),
+            () => _ = LoadNativeLibrariesAsync(force: true),
+            library => _ = OpenNativeLibraryAsync(library));
+        _sidebar.Visible = false;
+        _toolbar.Controls.AddRange([Brand(), back, _server, connect, refresh, full, exit]);
+        _fullscreenBar.Controls.AddRange([Brand(), _serverStatus, fullRefresh, leaveFullscreen, fullExit]);
         Controls.Add(_browser);
+        Controls.Add(_sidebar);
         Controls.Add(_toolbar);
         Controls.Add(_fullscreenBar);
         _server.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; _ = ConnectAsync(); } };
@@ -149,6 +165,8 @@ public sealed class SurfaceForm : Form
         if (_offlineLibrary?.IsOfflinePage == true) return;
         _toolbar.Visible = !_fullscreen;
         _fullscreenBar.Visible = _fullscreen && !_onlineVideoActive;
+        _sidebar.Visible = _serverUri is not null && _onlineLibraryReady &&
+            !_onlineVideoActive && _offlineLibrary?.IsOfflinePage != true;
         TopMost = _fullscreen && _onlineVideoActive;
     }
 
@@ -172,6 +190,7 @@ public sealed class SurfaceForm : Form
         if (_offlineLibrary is null) return;
         _offlineVideoExpanded = false;
         _onlineVideoActive = false;
+        _sidebar.Visible = false;
         TopMost = false;
         _toolbar.Visible = false;
         _fullscreenBar.Visible = false;
