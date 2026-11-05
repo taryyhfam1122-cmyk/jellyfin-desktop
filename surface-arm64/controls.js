@@ -270,6 +270,9 @@
         startHold(current,()=>gesture===current && fingers.size===1 && !touchStream);
         window.__jfdTrickplayPreview?.prefetch(v.currentTime,v.duration);
     }
+    function isVideoGesturePointer(e) {
+        return e.pointerType === 'touch' || (e.pointerType === 'mouse' && e.button === 0);
+    }
     window.addEventListener('pointerdown', e => {
         // SearchHub owns its own touch scrolling and back gesture, even if a
         // Jellyfin video element is still mounted behind the search overlay.
