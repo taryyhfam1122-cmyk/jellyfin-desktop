@@ -303,6 +303,10 @@ internal sealed class OfflineLibrary
                     var info = new FileInfo(dest);
                     if (File.Exists(OfflineJackets.CoverPath(source)))
                         File.Copy(OfflineJackets.CoverPath(source), OfflineJackets.CoverPath(dest), false);
+                    // Keep verified folder/title metadata beside imported videos.
+                    // The source remains unchanged; failed/absent sidecars do not block playback.
+                    if (File.Exists(source + ".jfd-meta.json"))
+                        File.Copy(source + ".jfd-meta.json", dest + ".jfd-meta.json", false);
                     AddVideo(info);
                     imported++;
                 }
