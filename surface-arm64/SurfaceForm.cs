@@ -31,6 +31,8 @@ public sealed class SurfaceForm : Form
     private bool _onlineVideoActive;
     private bool _onlineLibraryReady;
     private bool _librariesLoading;
+    private DateTime _librariesLastRequestUtc = DateTime.MinValue;
+    private readonly System.Windows.Forms.Timer _libraryRetryTimer = new() { Interval = 4000 };
     private string _loadedLibrariesFor = "";
     private NativeLibrarySidebar _sidebar = null!;
 
@@ -73,6 +75,15 @@ public sealed class SurfaceForm : Form
             () => _ = LoadNativeLibrariesAsync(force: true),
             library => _ = OpenNativeLibraryAsync(library));
         _sidebar.Visible = false;
+        // If the first attempt happens before Jellyfin's authentication
+        // client is ready, retry until an actual library list is received.
+        _libraryRetryTimer.Tick += (_, _) =>
+        {
+            if (_onlineLibraryReady && _loadedLibrariesFor.Length == 0)
+                _ = LoadNativeLibrariesAsync();
+        };
+        _libraryRetryTimer.Start();
+        FormClosed += (_, _) => { _libraryRetryTimer.Stop(); _libraryRetryTimer.Dispose(); };
         _toolbar.Controls.AddRange([Brand(), back, _server, connect, refresh, full, exit]);
         _fullscreenBar.Controls.AddRange([Brand(), _serverStatus, fullRefresh, leaveFullscreen, fullExit]);
         Controls.Add(_browser);
@@ -520,6 +531,11 @@ public sealed class SurfaceForm : Form
                     using var doc = JsonDocument.Parse(e.WebMessageAsJson);
                     var root = doc.RootElement;
                     if (!root.TryGetProperty("type", out var type)) return;
+                    if (type.GetString() == "jfd-native-libraries")
+                    {
+                        AcceptNativeLibraries(root);
+                        return;
+                    }
                     if (type.GetString() == "jfd-cover-image")
                     {
                         _offlineLibrary?.AcceptJacketMessage(root);
@@ -770,66 +786,109 @@ public sealed class SurfaceForm : Form
 
     private async Task LoadNativeLibrariesAsync(bool force = false)
     {
-        if (!_onlineLibraryReady || _serverUri is null || _librariesLoading ||
-            _offlineLibrary?.IsOfflinePage == true || _browser.CoreWebView2 is null) return;
+        if (!_onlineLibraryReady || _serverUri is null ||
+            _offlineLibrary?.IsOfflinePage == true || _browser.CoreWebView2 is null)
+            return;
+        if (!force && _loadedLibrariesFor.Length > 0) return;
+        if (_librariesLoading && (DateTime.UtcNow - _librariesLastRequestUtc).TotalSeconds < 10)
+            return;
         _librariesLoading = true;
+        _librariesLastRequestUtc = DateTime.UtcNow;
         try
         {
-            // The user-specific Views API returns ONLY libraries visible to
-            // this signed-in Jellyfin account. Jellyfin Web supplies its own
-            // session authorization; no tokens are read, copied or logged.
+            // IMPORTANT: ExecuteScriptAsync does not return a resolved value
+            // from a JavaScript async IIFE on all WebView2 versions. The
+            // asynchronous Jellyfin API result is therefore delivered via
+            // chrome.webview.postMessage after await completes, not parsed
+            // from ExecuteScriptAsync's immediate ("null") result.
             const string query = """
-                (async () => {
-                    try {
-                        const api = window.ApiClient;
-                        const user = api?.getCurrentUserId?.();
-                        if (!user || !api?.fetch || !api?.getUrl) return '';
-                        const raw = await api.fetch({
-                            url:api.getUrl('Users/'+encodeURIComponent(user)+'/Views'),
-                            type:'GET',dataType:'json'
-                        });
-                        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-                        const entries = (Array.isArray(data?.Items) ? data.Items : [])
-                            .slice(0,100).map(item => ({
-                                Id:String(item.Id||''),
-                                Name:String(item.Name||''),
-                                CollectionType:String(item.CollectionType||'')
-                            }));
-                        return JSON.stringify({User:String(user), Items:entries});
-                    } catch (_) { return ''; }
+                (() => {
+                    const api = window.ApiClient;
+                    const user = api?.getCurrentUserId?.();
+                    if (!user || !api?.fetch || !api?.getUrl) return 'not-ready';
+                    (async () => {
+                        try {
+                            const raw = await api.fetch({
+                                url: api.getUrl('Users/'+encodeURIComponent(user)+'/Views'),
+                                type: 'GET', dataType: 'json'
+                            });
+                            const data = typeof raw==='string' ? JSON.parse(raw) :
+                                (typeof raw?.json==='function' ? await raw.json() : raw);
+                            const entries = (Array.isArray(data?.Items) ? data.Items : [])
+                                .slice(0,100).map(item => ({
+                                    id: String(item.Id||''),
+                                    name: String(item.Name||'').slice(0,200),
+                                    collectionType: String(item.CollectionType||'').slice(0,60)
+                                }));
+                            window.chrome?.webview?.postMessage({
+                                type:'jfd-native-libraries', user:String(user),
+                                items:entries
+                            });
+                        } catch (_) {
+                            window.chrome?.webview?.postMessage({
+                                type:'jfd-native-libraries', user:String(user),
+                                error:'api-unavailable'
+                            });
+                        }
+                    })();
+                    return 'requested';
                 })()
                 """;
-            var raw = await _browser.CoreWebView2.ExecuteScriptAsync(query);
-            var json = JsonSerializer.Deserialize<string>(raw);
-            if (string.IsNullOrWhiteSpace(json)) return;
-            using var document = JsonDocument.Parse(json);
-            var root = document.RootElement;
-            if (!root.TryGetProperty("User", out var userNode) ||
-                !root.TryGetProperty("Items", out var itemsNode) ||
-                itemsNode.ValueKind != JsonValueKind.Array) return;
-            var userId = userNode.GetString() ?? "";
-            var key = _serverUri.GetLeftPart(UriPartial.Authority) + "|" + userId;
-            if (string.IsNullOrWhiteSpace(userId) || (!force && _loadedLibrariesFor == key))
-                return;
-            var libraries = new List<NativeLibraryEntry>();
-            foreach (var item in itemsNode.EnumerateArray())
+            var immediate = await _browser.CoreWebView2.ExecuteScriptAsync(query);
+            if (immediate != "\"requested\"")
             {
-                if (!item.TryGetProperty("Id", out var id) ||
-                    !item.TryGetProperty("Name", out var name)) continue;
-                var type = item.TryGetProperty("CollectionType", out var kind) ?
-                    kind.GetString() ?? "" : "";
-                libraries.Add(new NativeLibraryEntry(id.GetString() ?? "",
-                    name.GetString() ?? "", type));
+                _librariesLoading = false;
+                Log("Native library sidebar: waiting for Jellyfin ApiClient");
             }
-            _sidebar.SetLibraries(libraries);
-            _loadedLibrariesFor = key;
-            Log("Native library sidebar loaded: " + libraries.Count);
         }
         catch (Exception error)
         {
-            Log("Native library sidebar query failed: " + error.GetType().Name);
+            _librariesLoading = false;
+            Log("Native library request failed: " + error.GetType().Name);
         }
-        finally { _librariesLoading = false; }
+    }
+
+    private void AcceptNativeLibraries(JsonElement root)
+    {
+        _librariesLoading = false;
+        if (!_onlineLibraryReady || _serverUri is null ||
+            _offlineLibrary?.IsOfflinePage == true) return;
+        if (!root.TryGetProperty("user", out var user) ||
+            user.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(user.GetString())) return;
+        if (root.TryGetProperty("error", out _))
+        {
+            Log("Native library sidebar: retry after API became unavailable");
+            return;
+        }
+        if (!root.TryGetProperty("items", out var rows) ||
+            rows.ValueKind != JsonValueKind.Array) return;
+        var libraries = new List<NativeLibraryEntry>();
+        foreach (var item in rows.EnumerateArray().Take(100))
+        {
+            if (item.ValueKind != JsonValueKind.Object ||
+                !item.TryGetProperty("id", out var id) ||
+                !item.TryGetProperty("name", out var name) ||
+                id.ValueKind != JsonValueKind.String ||
+                name.ValueKind != JsonValueKind.String ||
+                !Guid.TryParse(id.GetString(), out _))
+                continue;
+            var kind = item.TryGetProperty("collectionType", out var type) &&
+                type.ValueKind == JsonValueKind.String ? type.GetString() ?? "" : "";
+            var title = name.GetString() ?? "";
+            if (title.Length > 200 || string.IsNullOrWhiteSpace(title)) continue;
+            libraries.Add(new NativeLibraryEntry(id.GetString() ?? "", title, kind));
+        }
+        if (libraries.Count == 0)
+        {
+            Log("Native library sidebar: zero views; will retry");
+            _sidebar.SetLibraryStatus("ライブラリを取得中…");
+            return;
+        }
+        _sidebar.SetLibraries(libraries);
+        _loadedLibrariesFor = _serverUri.GetLeftPart(UriPartial.Authority) +
+            "|" + user.GetString();
+        Log("Native library sidebar loaded: " + libraries.Count);
     }
 
     private async Task OpenNativeLibraryAsync(NativeLibraryEntry library)
