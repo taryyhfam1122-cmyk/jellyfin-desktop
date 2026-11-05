@@ -86,11 +86,11 @@ internal sealed class NativeGestureOverlay : Form
     private int? _activeTouch;
     private DateTime _suppressMouseUntil;
 
-    public Action<Point>? BeginGesture { get; set; }
-    public Action<Point>? MoveGesture { get; set; }
-    public Action<Point>? EndGesture { get; set; }
-    public Action<int>? WheelGesture { get; set; }
-    public Action<Keys>? PlaybackKey { get; set; }
+    public Action<Point>? BeginGesture;
+    public Action<Point>? MoveGesture;
+    public Action<Point>? EndGesture;
+    public Action<int>? WheelGesture;
+    public Action<Keys>? PlaybackKey;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct TouchInput
