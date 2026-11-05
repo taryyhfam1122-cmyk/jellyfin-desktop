@@ -277,7 +277,7 @@
         // SearchHub owns its own touch scrolling and back gesture, even if a
         // Jellyfin video element is still mounted behind the search overlay.
         if (inSearchHub(e.target)) return;
-        if (e.pointerType !== 'touch' || touchStream) return;
+        if (!isVideoGesturePointer(e) || touchStream) return;
         if (blockedPointers.size) {
             blockedPointers.add(e.pointerId);
             e.preventDefault(); e.stopImmediatePropagation();
@@ -294,8 +294,11 @@
             e.preventDefault(); e.stopImmediatePropagation();
             return;
         }
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        // Mouse clicks remain Jellyfin's own; prevent defaults only after dragging.
+        if (e.pointerType === 'touch') {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
         fingers.set(e.pointerId, {x:e.clientX, y:e.clientY});
         baseline();
         try { e.target?.setPointerCapture?.(e.pointerId); } catch (_) {}
