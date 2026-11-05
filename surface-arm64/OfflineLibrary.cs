@@ -620,11 +620,13 @@ internal sealed class OfflineLibrary
 
     private void PlayInApp(string path)
     {
-        // Chromium WebView2 does not reliably decode AVI containers. Use the
-        // Windows-associated player without converting or changing the local file.
+        // AVI is handled inside this application by libmpv, the same playback
+        // engine family as the main Jellyfin Desktop Qt app. The original local
+        // file and its sidecars remain untouched. MP4 keeps the verified WebView2
+        // playback gestures until the native player is validated on Surface.
         if (Path.GetExtension(path).Equals(".avi", StringComparison.OrdinalIgnoreCase))
         {
-            OpenInSystemPlayer(path);
+            NativeMpvPlayer.TryShow(_browser.FindForm(), path);
             return;
         }
         // Playback runs from a file:// page, never from the Jellyfin origin.
