@@ -782,12 +782,22 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       });
     }
   }
+  function reportSidebar(mode) {
+    // Only mode and known tab names cross the native bridge.
+    // The user/library media cache and auth details remain in Jellyfin.
+    try {
+      window.chrome?.webview?.postMessage({
+        type:'jfd-sidebar-state',mode,tab:state.tab
+      });
+    } catch (_) {}
+  }
   function open() {
     if(state.opened)return;
     state.api=currentApi();if(!state.api || !document.body)return;
     const activeUser=state.api.getCurrentUserId();
     if(state.userId && state.userId!==activeUser){state.libraries=[];state.fetchedMoviesKey='';state.fetchedPersonsKey='';}
     state.userId=activeUser;state.opened=true;
+    reportSidebar('search');
     ensureStyle();const root=document.createElement('div');root.id=ID;
     root.setAttribute('role','dialog');root.setAttribute('aria-label','Jellyfin検索ハブ');root.setAttribute('aria-modal','true');
     document.body.appendChild(root);
@@ -857,6 +867,7 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
   }
   function close() {
     state.opened=false;state.epoch++;document.getElementById(ID)?.remove();
+    reportSidebar('library');
     document.documentElement.style.overflow=state.previousOverflow || '';state.detail=null;state.detailItems=[];state.query='';state.page=1;
     // Recreate and show the launcher immediately, not just on the next 2.5s poll.
     window.__jfdSurfacePlaybackUI?.sync?.();
@@ -1005,8 +1016,9 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     state.page=1;state.query='';state.detailGenres='';draw();
   }
   async function setTab(tab){
-    if(!['persons','series','genres'].includes(tab))return;
+    if(!['persons','series','genres'].includes(tab)||!state.opened)return;
     state.epoch++;state.tab=tab;state.detail=null;state.detailItems=[];
+    reportSidebar('search');
     state.query='';state.page=1;state.message='';state.error='';await loadTab();
   }
   document.addEventListener('click',evt=>{
@@ -1138,7 +1150,10 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
     returnFromDetail() { return returnFromDetail(); },
     // Native ARM64 toolbar and fullscreen controls must not rely on CSS or
     // the floating launcher being visible; use the same read-only panel.
-    openSearch() { open(); return state.opened; }
+    openSearch() { open(); return state.opened; },
+    closeSearch() { if(state.opened)close();return true; },
+    selectTab(tab) { if(!state.opened)return false;void setTab(tab);return true; },
+    currentTab() { return state.opened?state.tab:null; }
   });
   function attachButton() {
     updateReturnButton();
