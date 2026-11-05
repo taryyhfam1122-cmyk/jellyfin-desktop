@@ -125,6 +125,19 @@ internal sealed class NativeLibrarySidebar : Panel
         return button;
     }
 
+    public void SetLibraryStatus(string message)
+    {
+        if (IsDisposed) return;
+        _libraryRows.SuspendLayout();
+        try
+        {
+            _libraryRows.Controls.Clear();
+            _libraryMessage.Text = message;
+            _libraryRows.Controls.Add(_libraryMessage);
+        }
+        finally { _libraryRows.ResumeLayout(); }
+    }
+
     public void SetLibraries(IEnumerable<NativeLibraryEntry> libraries)
     {
         if (IsDisposed) return;
