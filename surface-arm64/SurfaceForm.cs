@@ -9,9 +9,18 @@ namespace JellyfinSurface;
 public sealed class SurfaceForm : Form
 {
     private readonly WebView2 _browser = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Black };
-    private readonly FlowLayoutPanel _toolbar = new() { Dock = DockStyle.Top, Height = 64, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(25, 29, 36), Padding = new Padding(4) };
-    private readonly FlowLayoutPanel _fullscreenBar = new() { Dock = DockStyle.Top, Height = 64, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(23, 28, 35), Padding = new Padding(3), Visible = false };
-    private readonly TextBox _server = new() { Width = 400, Font = new Font("Segoe UI", 11), PlaceholderText = "http://NAS-IP:30013" };
+    private readonly FlowLayoutPanel _toolbar = new() { Dock = DockStyle.Top, Height = 62, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(12, 19, 32), Padding = new Padding(8, 7, 8, 7) };
+    private readonly FlowLayoutPanel _fullscreenBar = new() { Dock = DockStyle.Top, Height = 62, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(12, 19, 32), Padding = new Padding(8, 7, 8, 7), Visible = false };
+    private readonly TextBox _server = new() { Width = 275, Font = new Font("Segoe UI", 10), PlaceholderText = "http://NAS-IP:30013", BackColor = Color.FromArgb(26, 38, 57), ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle, Margin = new Padding(5, 13, 5, 5) };
+    private readonly Label _serverStatus = new()
+    {
+        Width = 250, Height = 44, Text = "◎ Jellyfin 接続先を確認",
+        BackColor = Color.FromArgb(22, 34, 54),
+        ForeColor = Color.FromArgb(173, 203, 232),
+        Font = new Font("Segoe UI", 9, FontStyle.Regular),
+        TextAlign = ContentAlignment.MiddleCenter,
+        Margin = new Padding(8, 2, 5, 2)
+    };
     private readonly string _appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JellyfinSurfaceC02Desktop");
     private bool _fullscreen;
     private string? _scriptId;
@@ -30,27 +39,27 @@ public sealed class SurfaceForm : Form
         Font = new Font("Segoe UI", 10);
         KeyPreview = true;
 
-        var back = Button("←", 48, () => _ = BackPreservingSearchAsync());
-        var home = Button("ホーム", 74, NavigateHomeDirect);
+        var back = Button("‹", 43, () => _ = BackPreservingSearchAsync());
+        var home = Button("⌂ ホーム", 96, NavigateHomeDirect);
         // An always-accessible native launcher avoids depending on the
         // Jellyfin page's floating search button or fullscreen CSS.
-        var search = Button("検索一覧", 96, () => _ = OpenSearchHubAsync());
-        var offline = Button("保存済み", 105, OpenSaved);
-        var downloads = Button("進捗", 72, () => _offlineLibrary?.ShowDownloadManager());
-        var connect = Button("接続", 66, () => _ = ConnectAsync());
-        var refresh = Button("更新", 65, () => _browser.Reload());
-        var full = Button("全画面", 82, ToggleFullscreen);
-        var exit = Button("終了 ✕", 95, Close);
-        var leaveFullscreen = Button("通常表示", 102, ToggleFullscreen);
-        var fullHome = Button("ホーム", 90, NavigateHomeDirect);
-        var fullSearch = Button("検索一覧", 100, () => _ = OpenSearchHubAsync());
-        var fullRefresh = Button("更新 ↻", 100, () => _browser.Reload());
-        var fullOffline = Button("保存済み", 100, OpenSaved);
-        var fullDownloads = Button("進捗", 80, () => _offlineLibrary?.ShowDownloadManager());
-        var fullExit = Button("アプリを終了 ✕", 148, Close);
+        var search = Button("⌕ 検索一覧", 139, () => _ = OpenSearchHubAsync());
+        var offline = Button("▣ 保存済み", 119, OpenSaved);
+        var downloads = Button("⇩ 進捗", 91, () => _offlineLibrary?.ShowDownloadManager());
+        var connect = Button("接続", 69, () => _ = ConnectAsync());
+        var refresh = Button("↻ 更新", 83, () => _browser.Reload());
+        var full = Button("⛶ 全画面", 96, ToggleFullscreen);
+        var exit = Button("⏻", 50, Close);
+        var leaveFullscreen = Button("⛶ 通常表示", 104, ToggleFullscreen);
+        var fullHome = Button("⌂ ホーム", 100, NavigateHomeDirect);
+        var fullSearch = Button("⌕ 検索一覧", 145, () => _ = OpenSearchHubAsync());
+        var fullRefresh = Button("↻ 更新", 83, () => _browser.Reload());
+        var fullOffline = Button("▣ 保存済み", 116, OpenSaved);
+        var fullDownloads = Button("⇩ 進捗", 94, () => _offlineLibrary?.ShowDownloadManager());
+        var fullExit = Button("⏻", 50, Close);
 
-        _toolbar.Controls.AddRange([back, home, search, offline, downloads, _server, connect, refresh, full, exit]);
-        _fullscreenBar.Controls.AddRange([leaveFullscreen, fullHome, fullSearch, fullOffline, fullDownloads, fullRefresh, fullExit]);
+        _toolbar.Controls.AddRange([Brand(), back, home, search, offline, downloads, _server, connect, refresh, full, exit]);
+        _fullscreenBar.Controls.AddRange([Brand(), fullHome, fullSearch, fullOffline, fullDownloads, _serverStatus, fullRefresh, leaveFullscreen, fullExit]);
         Controls.Add(_browser);
         Controls.Add(_toolbar);
         Controls.Add(_fullscreenBar);
@@ -63,20 +72,37 @@ public sealed class SurfaceForm : Form
         };
     }
 
+    private static Label Brand() => new()
+    {
+        Text = "◇ Jellyfin C02",
+        Width = 158, Height = 44,
+        ForeColor = Color.FromArgb(244, 242, 255),
+        BackColor = Color.FromArgb(12, 19, 32),
+        TextAlign = ContentAlignment.MiddleCenter,
+        Font = new Font("Segoe UI", 14, FontStyle.Bold),
+        Margin = new Padding(3, 2, 14, 2)
+    };
+
     private static Button Button(string caption, int width, Action action)
     {
+        var selected = caption.Contains("検索一覧", StringComparison.Ordinal);
+        var power = caption == "⏻";
         var b = new Button
         {
-            Text = caption,
-            Width = caption == "検索一覧" ? 180 : width,
-            Height = caption == "検索一覧" ? 52 : 44,
-            Font = caption == "検索一覧" ? new Font("Segoe UI", 13, FontStyle.Bold) : new Font("Segoe UI", 10),
+            Text = caption, Width = width, Height = 44,
+            Font = new Font("Segoe UI", selected ? 11 : 10, selected ? FontStyle.Bold : FontStyle.Regular),
             FlatStyle = FlatStyle.Flat,
-            ForeColor = Color.White,
-            BackColor = caption == "検索一覧" ? Color.FromArgb(9, 100, 156) : Color.FromArgb(46, 57, 70),
-            Margin = new Padding(4, 3, 4, 3),
-            TextAlign = ContentAlignment.MiddleCenter
+            ForeColor = power ? Color.FromArgb(242, 166, 191) : Color.White,
+            BackColor = selected ? Color.FromArgb(111, 48, 177) : Color.FromArgb(31, 44, 65),
+            Margin = new Padding(3, 2, 3, 2),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Cursor = Cursors.Hand
         };
+        b.FlatAppearance.BorderSize = 1;
+        b.FlatAppearance.BorderColor = selected
+            ? Color.FromArgb(179, 111, 237) : Color.FromArgb(67, 88, 119);
+        b.FlatAppearance.MouseOverBackColor = selected
+            ? Color.FromArgb(135, 68, 211) : Color.FromArgb(52, 72, 102);
         b.Click += (_, _) => action();
         return b;
     }
