@@ -568,6 +568,7 @@ public sealed class SurfaceForm : Form
                                 if (!_onlineLibraryReady)
                                 {
                                     _onlineLibraryReady = true;
+                                    _sidebar.SetLibraryStatus("ライブラリを取得中…");
                                     RestoreOnlineBars();
                                 }
                                 _ = LoadNativeLibrariesAsync();
