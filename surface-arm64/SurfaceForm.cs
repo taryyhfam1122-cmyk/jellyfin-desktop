@@ -120,16 +120,68 @@ public sealed class SurfaceForm : Form
 
     private async Task ReturnOnlineFromOfflineAsync()
     {
-        if (_serverUri is null || !await ServerIsOnlineAsync(_serverUri))
+        if (_serverUri is not null && await ServerIsOnlineAsync(_serverUri))
         {
-            MessageBox.Show("Jellyfinサーバーに接続できません。保存済み動画は引き続き再生できます。",
-                "オフラインモード", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            _offlineLibrary?.EnterServer();
+            _offlineVideoExpanded = false;
+            RestoreOnlineBars();
+            NavigateHomeDirect();
             return;
         }
-        _offlineLibrary?.EnterServer();
-        _offlineVideoExpanded = false;
-        RestoreOnlineBars();
-        NavigateHomeDirect();
+
+        // A new desktop test profile has no saved Jellyfin server. The offline
+        // home must offer a connection dialog instead of trapping the user.
+        // Cancel or an unreachable server always leaves the local library intact.
+        using var dialog = new Form
+        {
+            Text = "Jellyfinオンライン接続", Width = 560, Height = 225,
+            FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false,
+            MinimizeBox = false, StartPosition = FormStartPosition.CenterParent,
+            BackColor = Color.FromArgb(23, 32, 45), ForeColor = Color.White
+        };
+        var description = new Label
+        {
+            Text = "JellyfinサーバーのURLを入力してください。\n接続できない場合も保存動画はそのまま利用できます。",
+            Left = 18, Top = 17, Width = 500, Height = 48,
+            ForeColor = Color.White
+        };
+        var urlInput = new TextBox
+        {
+            Left = 18, Top = 79, Width = 500, Height = 32,
+            Font = new Font("Segoe UI", 11), PlaceholderText = "http://NAS-IP:30013",
+            Text = _serverUri?.GetLeftPart(UriPartial.Authority) ?? _server.Text
+        };
+        var connect = new Button
+        {
+            Text = "接続", Left = 292, Top = 128, Width = 108, Height = 42,
+            DialogResult = DialogResult.OK, BackColor = Color.FromArgb(37, 99, 156),
+            ForeColor = Color.White
+        };
+        var cancel = new Button
+        {
+            Text = "キャンセル", Left = 408, Top = 128, Width = 110, Height = 42,
+            DialogResult = DialogResult.Cancel, BackColor = Color.FromArgb(57, 71, 90),
+            ForeColor = Color.White
+        };
+        dialog.AcceptButton = connect;
+        dialog.CancelButton = cancel;
+        dialog.Controls.AddRange([description, urlInput, connect, cancel]);
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        if (!TryServerUrl(urlInput.Text, out var server))
+        {
+            MessageBox.Show("http:// または https:// で始まるJellyfinのURLを入力してください。",
+                "接続先を確認", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        if (!await ServerIsOnlineAsync(server))
+        {
+            MessageBox.Show("Jellyfinサーバーに接続できません。接続先とネットワークを確認してください。\n保存済みの動画はそのまま利用できます。",
+                "接続できません", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        _server.Text = server.GetLeftPart(UriPartial.Authority);
+        await ConnectAsync();
     }
 
     private static async Task<bool> ServerIsOnlineAsync(Uri server)
