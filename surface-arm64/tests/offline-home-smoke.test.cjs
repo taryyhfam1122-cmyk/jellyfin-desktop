@@ -105,6 +105,8 @@ test('one click on poster plays immediately, while information button opens deta
 test('native desktop manager retains single-click playback and AVI external fallback', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'OfflineLibrary.cs'), 'utf8');
     assert.match(source, /list\.MouseClick\s*\+=/);
+    assert.match(source, /if \(selectionMode \|\| e\.Button != MouseButtons\.Left\) return;/);
+    assert.match(source, /選択モード: OFF/);
     assert.match(source, /if \(!launchedPlayback\) ShowOfflineHome\(\)/);
     assert.match(source, /GetExtension\(path\)\.Equals\("\.avi"/);
     assert.match(source, /OpenInSystemPlayer\(path\)/);
