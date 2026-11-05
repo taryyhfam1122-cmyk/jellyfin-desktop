@@ -305,9 +305,15 @@
     }, {capture:true, passive:false});
 
     window.addEventListener('pointermove', e => {
-        if (e.pointerType !== 'touch' || touchStream || !fingers.has(e.pointerId)) return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        const isMouse = e.pointerType === 'mouse';
+        if ((e.pointerType !== 'touch' && !isMouse) || touchStream ||
+            !fingers.has(e.pointerId)) return;
+        if (isMouse && !(e.buttons & 1)) return;
+        const delta = gesture ? Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) : 0;
+        if (!isMouse || delta >= 10 || gesture?.mode) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
         fingers.set(e.pointerId, {x:e.clientX, y:e.clientY});
         const g=gesture;
         if (!g || g.v !== video() || fingers.size !== g.count) return;
