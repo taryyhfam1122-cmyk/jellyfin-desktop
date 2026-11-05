@@ -155,7 +155,7 @@ internal sealed class NativeMpvPlayer : Form
         _gestureOverlay.MoveGesture = MoveGesture;
         _gestureOverlay.EndGesture = EndGesture;
         _gestureOverlay.WheelGesture = delta => ApplyWheel(delta);
-        _gestureOverlay.PlaybackKey = HandlePlaybackKey;
+        _gestureOverlay.PlaybackKey = key => { HandlePlaybackKey(key); };
         _holdTimer.Tick += (_, _) => AdvanceHeldSeek();
         _tapTimer.Tick += (_, _) => ProcessSingleTap();
         _screen.SizeChanged += (_, _) => SyncGestureOverlay();
