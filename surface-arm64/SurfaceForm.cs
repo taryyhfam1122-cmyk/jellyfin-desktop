@@ -593,6 +593,7 @@ public sealed class SurfaceForm : Form
                         window.__jfdSurfaceSearchEntryV27) return;
                     window.__jfdSurfaceSearchEntryV27 = true;
                     const ID = 'jfd-surface-search-entry-v27';
+                    let lastVideoActive = null;
                     function refresh() {
                         if (!document.body) return;
                         let btn = document.getElementById(ID);
@@ -619,6 +620,15 @@ public sealed class SurfaceForm : Form
                             (location.hash.includes('/video') || location.hash.includes('/player')) ||
                             Array.from(document.querySelectorAll('video')).some(v =>
                                 v.readyState > 0 && v.getBoundingClientRect().width > 120);
+                        // Only fullscreen playback hides native application buttons.
+                        // Restore them as soon as the online Jellyfin player closes.
+                        if (playing !== lastVideoActive) {
+                            lastVideoActive = playing;
+                            window.chrome?.webview?.postMessage({
+                                type: 'jfd-player-action',
+                                action: playing ? 'online-video-active' : 'online-video-inactive'
+                            });
+                        }
                         const open = !!document.getElementById('jfsh-v1');
                         const legacy = document.getElementById('jfsh-launch');
                         const legacyVisible = !!legacy && legacy.getClientRects().length > 0 &&
