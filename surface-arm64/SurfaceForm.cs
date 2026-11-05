@@ -607,6 +607,7 @@ public sealed class SurfaceForm : Form
             _offlineVideoExpanded = false;
             RestoreOnlineBars();
             _server.Text = server.GetLeftPart(UriPartial.Authority);
+            _serverStatus.Text = "◎  " + server.Authority;
             File.WriteAllText(Path.Combine(_appData, "server.txt"), _server.Text);
             if (_scriptId is not null) _browser.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(_scriptId);
             if (_nativeSearchScriptId is not null)
