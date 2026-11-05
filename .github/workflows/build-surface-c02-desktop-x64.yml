@@ -45,6 +45,7 @@ jobs:
           node --test surface-arm64/tests/searchhub-navigation.test.cjs
           node --test surface-arm64/tests/offline-home-smoke.test.cjs
           node --test surface-arm64/tests/native-sidebar-smoke.test.cjs
+          node --test surface-arm64/tests/native-library-runtime.test.cjs
           node --test surface-arm64/tests/immersive-hud-smoke.test.cjs
       - name: Publish C02 Windows desktop x64
         run: |
