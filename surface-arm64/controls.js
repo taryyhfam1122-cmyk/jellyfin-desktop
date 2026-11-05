@@ -550,6 +550,15 @@
         homeTap(t.clientX,t.clientY,e.target);
     },{capture:true,passive:true});
 
+    // The native fullscreen toolbar disappears during playback. WebView2
+    // owns keyboard focus, so F11 must remain an accessible exit path.
+    window.addEventListener('keydown',e=>{
+        if(e.key!=='F11')return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        toggleFullscreen();
+    },{capture:true});
+
     window.addEventListener('blur',()=>{
         stopHold(gesture); stopHold(touchGesture);
         fingers.clear(); blockedPointers.clear(); gesture=null;
