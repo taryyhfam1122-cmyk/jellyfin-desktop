@@ -83,6 +83,12 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Native desktop x64 self-test failed: $($process.ExitCode)" }
           $decoder = Start-Process -FilePath $exe -ArgumentList '--self-test-native-mpv' -Wait -PassThru
           if ($decoder.ExitCode -ne 0) { throw "Native mpv DLL load test failed: $($decoder.ExitCode)" }
+          $gestures = Start-Process -FilePath $exe -ArgumentList '--self-test-native-gestures' -Wait -PassThru
+          if ($gestures.ExitCode -ne 0) { throw "Native offline swipe gesture test failed: $($gestures.ExitCode)" }
+          $source = Get-Content -Raw surface-arm64/OfflineLibrary.cs
+          if ($source -notmatch 'NativeMpvPlayer.TryShow' -or $source -match 'GetExtension\(path\)\.Equals\("\.avi"') {
+            throw 'Playback must use the same native UI for every supported extension'
+          }
           'PASS: native x64 runtime and offline assets. Full UI and Jellyfin require desktop testing.' | Set-Content publish-x64/validation.txt
       - uses: actions/upload-artifact@v4
         with:
