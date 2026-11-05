@@ -769,6 +769,111 @@ public sealed class SurfaceForm : Form
         }
     }
 
+
+    private async Task LoadNativeLibrariesAsync(bool force = false)
+    {
+        if (!_onlineLibraryReady || _serverUri is null || _librariesLoading ||
+            _offlineLibrary?.IsOfflinePage == true || _browser.CoreWebView2 is null) return;
+        _librariesLoading = true;
+        try
+        {
+            // The user-specific Views API returns ONLY libraries visible to
+            // this signed-in Jellyfin account. Jellyfin Web supplies its own
+            // session authorization; no tokens are read, copied or logged.
+            const string query = """
+                (async () => {
+                    try {
+                        const api = window.ApiClient;
+                        const user = api?.getCurrentUserId?.();
+                        if (!user || !api?.fetch || !api?.getUrl) return '';
+                        const raw = await api.fetch({
+                            url:api.getUrl('Users/'+encodeURIComponent(user)+'/Views'),
+                            type:'GET',dataType:'json'
+                        });
+                        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                        const entries = (Array.isArray(data?.Items) ? data.Items : [])
+                            .slice(0,100).map(item => ({
+                                Id:String(item.Id||''),
+                                Name:String(item.Name||''),
+                                CollectionType:String(item.CollectionType||'')
+                            }));
+                        return JSON.stringify({User:String(user), Items:entries});
+                    } catch (_) { return ''; }
+                })()
+                """;
+            var raw = await _browser.CoreWebView2.ExecuteScriptAsync(query);
+            var json = JsonSerializer.Deserialize<string>(raw);
+            if (string.IsNullOrWhiteSpace(json)) return;
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("User", out var userNode) ||
+                !root.TryGetProperty("Items", out var itemsNode) ||
+                itemsNode.ValueKind != JsonValueKind.Array) return;
+            var userId = userNode.GetString() ?? "";
+            var key = _serverUri.GetLeftPart(UriPartial.Authority) + "|" + userId;
+            if (string.IsNullOrWhiteSpace(userId) || (!force && _loadedLibrariesFor == key))
+                return;
+            var libraries = new List<NativeLibraryEntry>();
+            foreach (var item in itemsNode.EnumerateArray())
+            {
+                if (!item.TryGetProperty("Id", out var id) ||
+                    !item.TryGetProperty("Name", out var name)) continue;
+                var type = item.TryGetProperty("CollectionType", out var kind) ?
+                    kind.GetString() ?? "" : "";
+                libraries.Add(new NativeLibraryEntry(id.GetString() ?? "",
+                    name.GetString() ?? "", type));
+            }
+            _sidebar.SetLibraries(libraries);
+            _loadedLibrariesFor = key;
+            Log("Native library sidebar loaded: " + libraries.Count);
+        }
+        catch (Exception error)
+        {
+            Log("Native library sidebar query failed: " + error.GetType().Name);
+        }
+        finally { _librariesLoading = false; }
+    }
+
+    private async Task OpenNativeLibraryAsync(NativeLibraryEntry library)
+    {
+        if (!_onlineLibraryReady || _offlineLibrary?.IsOfflinePage == true ||
+            !Guid.TryParse(library.Id, out _) || _browser.CoreWebView2 is null) return;
+        try
+        {
+            var route = NativeLibrarySidebar.RouteFor(library.CollectionType);
+            // Prefer Jellyfin's own available navigation links (preserves the
+            // server's route and sort style); only fall back to its collection
+            // route if no matching link exists in the current page.
+            var script = """
+                (() => {
+                    const id = __JFD_LIBRARY_ID__;
+                    const route = __JFD_LIBRARY_ROUTE__;
+                    const links = Array.from(document.querySelectorAll('a[href]'));
+                    const match = links.find(link => {
+                        try {
+                            const url = new URL(link.href, location.href);
+                            return url.origin === location.origin &&
+                                (url.searchParams.get('topParentId') === id ||
+                                 url.searchParams.get('parentId') === id);
+                        } catch (_) { return false; }
+                    });
+                    if (match) {match.click();return 'native-link';}
+                    location.hash = '/' + route + '?topParentId=' + encodeURIComponent(id);
+                    return 'native-route';
+                })()
+                """;
+            script = script.Replace("__JFD_LIBRARY_ID__",
+                    JsonSerializer.Serialize(library.Id), StringComparison.Ordinal)
+                .Replace("__JFD_LIBRARY_ROUTE__", JsonSerializer.Serialize(route),
+                    StringComparison.Ordinal);
+            await _browser.CoreWebView2.ExecuteScriptAsync(script);
+        }
+        catch (Exception error)
+        {
+            Log("Native library navigation failed: " + error.GetType().Name);
+        }
+    }
+
     private static bool TryServerUrl(string raw, out Uri server)
     {
         server = null!;
