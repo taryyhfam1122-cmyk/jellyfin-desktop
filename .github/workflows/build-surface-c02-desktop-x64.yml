@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - surface-offline-c02-desktop-x64-preview
+      - surface-offline-c02-inapp-mpv-x64
     paths:
       - 'surface-arm64/**'
       - '.github/workflows/build-surface-c02-desktop-x64.yml'
@@ -45,21 +46,47 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           dotnet publish surface-arm64/JellyfinSurface.csproj -c Release -r win-x64 --self-contained true -p:RuntimeIdentifier=win-x64 -p:PlatformTarget=x64 -p:AssemblyName=JellyfinSurfaceX64 -o publish-x64
+      - name: Bundle verified LGPL libmpv native decoder
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $uri = 'https://github.com/mpv-player/mpv/releases/download/v0.42.0/libmpv-v0.42.0-x86_64-w64-mingw32-lgpl.zip'
+          Invoke-WebRequest -Uri $uri -OutFile libmpv-lgpl-x64.zip
+          $hash = (Get-FileHash libmpv-lgpl-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '8e5f77430efc53ef175804ba6618527e3af0448a0dcabf04d3cc72659d1a6fce') {
+            throw "libmpv SHA256 mismatch: $hash"
+          }
+          Expand-Archive -Path libmpv-lgpl-x64.zip -DestinationPath libmpv-unpack
+          $native = Get-ChildItem -Path libmpv-unpack -Recurse -Filter libmpv-2.dll -File | Select-Object -First 1
+          if ($null -eq $native) { throw 'libmpv-2.dll missing from verified official archive' }
+          Get-ChildItem -Path $native.DirectoryName -Filter '*.dll' -File | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination publish-x64 -Force
+          }
+          $licenseDir = 'publish-x64/third-party-licenses/mpv'
+          New-Item -ItemType Directory -Force -Path $licenseDir | Out-Null
+          Get-ChildItem libmpv-unpack -File -Recurse | Where-Object {
+            $_.Name -match '^(COPYING|LICENSE|README|copyright)(\.|$)'
+          } | ForEach-Object {
+            Copy-Item $_.FullName -Destination $licenseDir -Force
+          }
+          if (!(Test-Path publish-x64/libmpv-2.dll)) { throw 'native decoder missing in artifact' }
       - name: Verify x64 application and offline assets
         run: |
           $ErrorActionPreference = 'Stop'
           $exe = Join-Path (Resolve-Path publish-x64).Path 'JellyfinSurfaceX64.exe'
           if (!(Test-Path $exe)) { throw 'x64 executable missing' }
           if (!(Test-Path publish-x64/runtimes/win-x64/native/WebView2Loader.dll)) { throw 'x64 WebView2 native loader missing' }
+          if (!(Test-Path publish-x64/libmpv-2.dll)) { throw 'embedded native AVI playback DLL missing' }
           foreach ($file in @('controls.js','searchhub.js','offline-controls.js','offline-home.html','offline-home.js','offline-player.html','online-jacket-capture.js')) {
             if (!(Test-Path "publish-x64/$file")) { throw "Required asset missing: $file" }
           }
           $process = Start-Process -FilePath $exe -ArgumentList '--self-test-x64' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Native desktop x64 self-test failed: $($process.ExitCode)" }
+          $decoder = Start-Process -FilePath $exe -ArgumentList '--self-test-native-mpv' -Wait -PassThru
+          if ($decoder.ExitCode -ne 0) { throw "Native mpv DLL load test failed: $($decoder.ExitCode)" }
           'PASS: native x64 runtime and offline assets. Full UI and Jellyfin require desktop testing.' | Set-Content publish-x64/validation.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: jellyfin-surface-v26-offline-c02-desktop-x64
+          name: jellyfin-surface-c02-inapp-mpv-desktop-x64
           path: publish-x64/**
           if-no-files-found: error
           retention-days: 14
