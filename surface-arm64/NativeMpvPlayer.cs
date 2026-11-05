@@ -118,7 +118,13 @@ internal sealed class NativeMpvPlayer : Form
         Text = "Jellyfin Offline ネイティブ再生 — " + Path.GetFileName(path);
         BackColor = Color.Black;
         ForeColor = Color.White;
+        // True borderless immersive playback from the first frame. Unlike a
+        // maximized normal Form, this covers the title bar and Windows taskbar.
+        FormBorderStyle = FormBorderStyle.None;
         WindowState = FormWindowState.Maximized;
+        TopMost = true;
+        _tools.Visible = false;
+        _isImmersive = true;
         MinimumSize = new Size(650, 400);
         KeyPreview = true;
         var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 50,
@@ -230,7 +236,7 @@ internal sealed class NativeMpvPlayer : Form
     private void Hint(string message)
     {
         _hint.Text = message;
-        _hintUntil = DateTime.UtcNow.AddSeconds(1.2);
+        _hintUntil = DateTime.UtcNow.AddMilliseconds(900);
         if (!_hud.IsDisposed && _gestureOverlay.Visible && _screen.IsHandleCreated)
         {
             _hud.UpdateMessage(message, _screen.RectangleToScreen(_screen.ClientRectangle));
@@ -298,7 +304,7 @@ internal sealed class NativeMpvPlayer : Form
             OfflineGestureProfile.SeekSeconds(_gestureDx) + _gestureHoldOffset,
             0, Math.Max(0, duration - 0.05));
         _clock.Text = Clock(_gestureTarget) + " / " + Clock(duration);
-        Hint("シーク先 " + Clock(_gestureTarget) + " / 全体 " + Clock(duration));
+        Hint(Clock(_gestureTarget) + " / " + Clock(duration));
     }
 
     private void AdvanceHeldSeek()
@@ -319,7 +325,7 @@ internal sealed class NativeMpvPlayer : Form
         {
             Set("time-pos", _gestureTarget);
             var duration = Read("duration", 0);
-            Hint("シーク先 " + Clock(_gestureTarget) + " / 全体 " + Clock(duration));
+            Hint(Clock(_gestureTarget) + " / " + Clock(duration));
         }
         else if (_gestureMode == OfflineSwipeAction.None)
             RegisterTap(p);
@@ -357,8 +363,10 @@ internal sealed class NativeMpvPlayer : Form
 
     private void ToggleControls()
     {
+        // No permanent controls in fullscreen. F11 or an upper double tap
+        // exits fullscreen first, then the normal playback controls return.
+        if (_isImmersive) return;
         _tools.Visible = !_tools.Visible;
-        _isImmersive = !_tools.Visible;
         SyncGestureOverlay();
     }
 
@@ -366,6 +374,18 @@ internal sealed class NativeMpvPlayer : Form
     {
         _isImmersive = !_isImmersive;
         _tools.Visible = !_isImmersive;
+        if (_isImmersive)
+        {
+            FormBorderStyle = FormBorderStyle.None;
+            WindowState = FormWindowState.Maximized;
+            TopMost = true;
+        }
+        else
+        {
+            TopMost = false;
+            FormBorderStyle = FormBorderStyle.Sizable;
+            WindowState = FormWindowState.Maximized;
+        }
         SyncGestureOverlay();
     }
 
