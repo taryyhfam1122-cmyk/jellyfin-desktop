@@ -19,6 +19,25 @@ internal static class Program
             return RuntimeInformation.ProcessArchitecture == Architecture.X64 ? 0 : 2;
         }
 
+        if (args.Contains("--self-test-native-mpv", StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var decoder = Path.Combine(AppContext.BaseDirectory, "libmpv-2.dll");
+                if (!File.Exists(decoder)) return 3;
+                var handle = NativeLibrary.Load(decoder);
+                try
+                {
+                    foreach (var name in new[] { "mpv_create", "mpv_initialize",
+                                                 "mpv_command", "mpv_terminate_destroy" })
+                        if (!NativeLibrary.TryGetExport(handle, name, out _)) return 4;
+                }
+                finally { NativeLibrary.Free(handle); }
+                return 0;
+            }
+            catch { return 5; }
+        }
+
         ApplicationConfiguration.Initialize();
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.Run(new SurfaceForm());
