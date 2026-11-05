@@ -7,6 +7,7 @@ on:
       - surface-offline-c02-inapp-mpv-x64
       - surface-offline-c02-home-redesign-x64
       - surface-offline-c02-native-sidebar-x64
+      - surface-offline-c02-two-stage-sidebar-x64
     paths:
       - 'surface-arm64/**'
       - '.github/workflows/build-surface-c02-desktop-x64.yml'
@@ -35,6 +36,7 @@ jobs:
           node --check surface-arm64/controls.js
           node --check surface-arm64/trickplay-preview.js
           node --check surface-arm64/searchhub.js
+          node --check surface-arm64/c02-home-tidy.js
           node --check surface-arm64/offline-controls.js
           node --check surface-arm64/online-jacket-capture.js
           node --check surface-arm64/offline-home.js
@@ -45,6 +47,7 @@ jobs:
           node --test surface-arm64/tests/searchhub-navigation.test.cjs
           node --test surface-arm64/tests/offline-home-smoke.test.cjs
           node --test surface-arm64/tests/native-sidebar-smoke.test.cjs
+          node --test surface-arm64/tests/c02-home-tidy.test.cjs
           node --test surface-arm64/tests/native-library-runtime.test.cjs
           node --test surface-arm64/tests/immersive-hud-smoke.test.cjs
       - name: Publish C02 Windows desktop x64
@@ -81,7 +84,7 @@ jobs:
           if (!(Test-Path $exe)) { throw 'x64 executable missing' }
           if (!(Test-Path publish-x64/runtimes/win-x64/native/WebView2Loader.dll)) { throw 'x64 WebView2 native loader missing' }
           if (!(Test-Path publish-x64/libmpv-2.dll)) { throw 'embedded native AVI playback DLL missing' }
-          foreach ($file in @('controls.js','searchhub.js','offline-controls.js','offline-home.html','offline-home.js','offline-player.html','online-jacket-capture.js')) {
+          foreach ($file in @('controls.js','searchhub.js','c02-home-tidy.js','offline-controls.js','offline-home.html','offline-home.js','offline-player.html','online-jacket-capture.js')) {
             if (!(Test-Path "publish-x64/$file")) { throw "Required asset missing: $file" }
           }
           $process = Start-Process -FilePath $exe -ArgumentList '--self-test-x64' -Wait -PassThru
@@ -99,7 +102,7 @@ jobs:
           'PASS: native x64 runtime and offline assets. Full UI and Jellyfin require desktop testing.' | Set-Content publish-x64/validation.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: jellyfin-surface-c02-native-sidebar-desktop-x64
+          name: jellyfin-surface-c02-two-stage-sidebar-desktop-x64
           path: publish-x64/**
           if-no-files-found: error
           retention-days: 14
