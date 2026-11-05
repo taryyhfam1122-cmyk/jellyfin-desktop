@@ -31,6 +31,7 @@ internal sealed class NativeMpvPlayer : Form
     private bool _scrubbing;
     private bool _ready;
     private readonly NativeGestureOverlay _gestureOverlay = new();
+    private readonly NativePlaybackHud _hud = new();
     private readonly System.Windows.Forms.Timer _holdTimer = new() { Interval = 200 };
     private readonly System.Windows.Forms.Timer _tapTimer = new() { Interval = 400 };
     private readonly Label _hint = new()
@@ -176,6 +177,8 @@ internal sealed class NativeMpvPlayer : Form
                 StartNative();
                 _gestureOverlay.Bounds = _screen.RectangleToScreen(_screen.ClientRectangle);
                 _gestureOverlay.Show(this);
+                _hud.Show(this);
+                _hud.Hide();
                 SyncGestureOverlay();
             }
             catch (Exception ex)
@@ -190,6 +193,7 @@ internal sealed class NativeMpvPlayer : Form
             _timer.Stop();
             _tapTimer.Stop();
             _holdTimer.Stop();
+            if (!_hud.IsDisposed) _hud.Close();
             if (!_gestureOverlay.IsDisposed) _gestureOverlay.Close();
         };
         FormClosed += (_, _) =>
@@ -197,6 +201,7 @@ internal sealed class NativeMpvPlayer : Form
             StopNative();
             _tapTimer.Dispose();
             _holdTimer.Dispose();
+            _hud.Dispose();
             _gestureOverlay.Dispose();
         };
         KeyDown += (_, e) =>
@@ -215,14 +220,23 @@ internal sealed class NativeMpvPlayer : Form
         if (_gestureOverlay.IsDisposed || !_gestureOverlay.Visible ||
             !_screen.IsHandleCreated || WindowState == FormWindowState.Minimized) return;
         var bounds = _screen.RectangleToScreen(_screen.ClientRectangle);
-        if (bounds.Width > 0 && bounds.Height > 0 && _gestureOverlay.Bounds != bounds)
-            _gestureOverlay.Bounds = bounds;
+        if (bounds.Width > 0 && bounds.Height > 0)
+        {
+            if (_gestureOverlay.Bounds != bounds) _gestureOverlay.Bounds = bounds;
+            if (!_hud.IsDisposed) _hud.UpdateMessage(_hint.Text, bounds);
+        }
     }
 
     private void Hint(string message)
     {
         _hint.Text = message;
         _hintUntil = DateTime.UtcNow.AddSeconds(1.2);
+        if (!_hud.IsDisposed && _gestureOverlay.Visible && _screen.IsHandleCreated)
+        {
+            _hud.UpdateMessage(message, _screen.RectangleToScreen(_screen.ClientRectangle));
+            if (!_hud.Visible) _hud.Show();
+            _hud.BringToFront();
+        }
     }
 
     private void BeginGesture(Point p)
@@ -284,7 +298,7 @@ internal sealed class NativeMpvPlayer : Form
             OfflineGestureProfile.SeekSeconds(_gestureDx) + _gestureHoldOffset,
             0, Math.Max(0, duration - 0.05));
         _clock.Text = Clock(_gestureTarget) + " / " + Clock(duration);
-        Hint("シーク " + Clock(_gestureTarget) + " / " + Clock(duration));
+        Hint("シーク先 " + Clock(_gestureTarget) + " / 全体 " + Clock(duration));
     }
 
     private void AdvanceHeldSeek()
@@ -305,7 +319,7 @@ internal sealed class NativeMpvPlayer : Form
         {
             Set("time-pos", _gestureTarget);
             var duration = Read("duration", 0);
-            Hint("シーク " + Clock(_gestureTarget) + " / " + Clock(duration));
+            Hint("シーク先 " + Clock(_gestureTarget) + " / 全体 " + Clock(duration));
         }
         else if (_gestureMode == OfflineSwipeAction.None)
             RegisterTap(p);
@@ -472,7 +486,10 @@ internal sealed class NativeMpvPlayer : Form
         if (!(_pointerDown && _gestureMode == OfflineSwipeAction.Seek))
             _clock.Text = Clock(pos) + " / " + Clock(duration);
         if (DateTime.UtcNow > _hintUntil)
+        {
+            if (!_hud.IsDisposed && _hud.Visible) _hud.Hide();
             _hint.Text = "左右にシーク / 左端で上下: 倍速 / 右端で上下: 音量";
+        }
         _faster.Text = "速度 " + Read("speed", 1).ToString("0.00") + "×";
         _volume.Text = "音量 " + Read("volume", 100).ToString("0") + "%";
     }
