@@ -41,6 +41,9 @@ internal static class Program
         if (args.Contains("--self-test-native-gestures", StringComparer.OrdinalIgnoreCase))
             return OfflineGestureProfile.SelfTest() ? 0 : 6;
 
+        if (args.Contains("--self-test-native-sidebar", StringComparer.OrdinalIgnoreCase))
+            return NativeLibrarySidebar.SelfTest() ? 0 : 7;
+
         ApplicationConfiguration.Initialize();
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.Run(new SurfaceForm());
