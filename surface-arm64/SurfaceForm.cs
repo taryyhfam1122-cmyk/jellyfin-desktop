@@ -957,33 +957,43 @@ public sealed class SurfaceForm : Form
             !Guid.TryParse(library.Id, out _) || _browser.CoreWebView2 is null) return;
         try
         {
+            // If SearchHub is still open, close its overlay before routing.
+            await SearchHubActionAsync("close", updateSidebar: false);
+            _sidebar.SetMode(C02SidebarMode.Library);
+            _sidebar.SelectLibrary(library.Id);
+
+            // The exact Jellyfin My Media anchor is generated using
+            // appRouter.getRouteUrl(item), including library-specific route
+            // paths which differ from the old guessed homevideos route.
             var route = NativeLibrarySidebar.RouteFor(library.CollectionType);
-            // Prefer Jellyfin's own available navigation links (preserves the
-            // server's route and sort style); only fall back to its collection
-            // route if no matching link exists in the current page.
             var script = """
                 (() => {
                     const id = __JFD_LIBRARY_ID__;
+                    const name = __JFD_LIBRARY_NAME__;
                     const route = __JFD_LIBRARY_ROUTE__;
-                    const links = Array.from(document.querySelectorAll('a[href]'));
-                    const match = links.find(link => {
-                        try {
-                            const url = new URL(link.href, location.href);
-                            return url.origin === location.origin &&
-                                (url.searchParams.get('topParentId') === id ||
-                                 url.searchParams.get('parentId') === id);
-                        } catch (_) { return false; }
-                    });
-                    if (match) {match.click();return 'native-link';}
-                    location.hash = '/' + route + '?topParentId=' + encodeURIComponent(id);
-                    return 'native-route';
+                    const type = __JFD_LIBRARY_TYPE__;
+                    const native = window.__jfdC02NativeLibrary?.navigate?.(id,name);
+                    if (native && native !== 'not-found') return native;
+                    // Fallback follows official Jellyfin appRouter.getRouteUrl
+                    // for CollectionFolder; mixed/untyped libraries use #/mixed.
+                    const query = '?topParentId=' + encodeURIComponent(id) +
+                        (route === 'homevideos' ? '' :
+                         '&collectionType=' + encodeURIComponent(type||'mixed'));
+                    location.hash = '#/' + route + query;
+                    return 'jellyfin-fallback-route';
                 })()
                 """;
             script = script.Replace("__JFD_LIBRARY_ID__",
                     JsonSerializer.Serialize(library.Id), StringComparison.Ordinal)
+                .Replace("__JFD_LIBRARY_NAME__",
+                    JsonSerializer.Serialize(library.Name), StringComparison.Ordinal)
                 .Replace("__JFD_LIBRARY_ROUTE__", JsonSerializer.Serialize(route),
-                    StringComparison.Ordinal);
-            await _browser.CoreWebView2.ExecuteScriptAsync(script);
+                    StringComparison.Ordinal)
+                .Replace("__JFD_LIBRARY_TYPE__",
+                    JsonSerializer.Serialize(library.CollectionType.Length > 0 ?
+                        library.CollectionType : "mixed"), StringComparison.Ordinal);
+            var outcome = await _browser.CoreWebView2.ExecuteScriptAsync(script);
+            Log("Native library opened using: " + outcome);
         }
         catch (Exception error)
         {
