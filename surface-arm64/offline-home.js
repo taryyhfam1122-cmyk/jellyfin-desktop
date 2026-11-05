@@ -47,12 +47,10 @@ function row(node,depth) {
 function matches(entry,path){return path.every((seg,i)=>entry.folders[i]===seg);}
 function renderTree(){const target=$('tree');target.replaceChildren(row(treeRoot,0));}
 function tapCard(entry,node){
- let pending=null,last=0;
- node.addEventListener('click', e=>{
-   const now=Date.now();
-   if(now-last<400){last=0;clearTimeout(pending);pending=null;send('play',entry.file);return;}
-   last=now;pending=setTimeout(()=>{if(last!==now)return;last=0;showDetails(entry);},420);
- });
+ // C02 desktop: one click/tap starts playback immediately.
+ // Details, jacket changes and deletion remain behind a separate info button.
+ node.addEventListener('click',()=>send('play',entry.file));
+ node.addEventListener('contextmenu',e=>{e.preventDefault();showDetails(entry);});
 }
 function showDetails(entry){
  chosen=entry;$('detail-title').textContent=entry.title;
@@ -70,12 +68,20 @@ function renderCards(resetScroll=false){
  const cards=$('cards');cards.replaceChildren();
  if(!items.length){const empty=document.createElement('div');empty.id='empty';empty.textContent='このフォルダには保存済み動画がありません。オンラインから作品をダウンロードしてください。';cards.append(empty);}
  for(const entry of items){
-   const card=document.createElement('button');card.type='button';card.className='poster';
+   const card=document.createElement('div');card.className='poster';
+   const playTarget=document.createElement('button');playTarget.type='button';playTarget.className='poster-hit';
+   playTarget.setAttribute('aria-label',entry.title+' を再生');
    const cover=document.createElement('div');cover.className='cover';
    if(entry.cover){const img=document.createElement('img');img.src=entry.cover;img.loading='lazy';img.alt='';img.onerror=()=>{cover.replaceChildren();const t=document.createElement('span');t.className='no-cover';t.textContent='NO COVER';cover.append(t);};cover.append(img);}
    else {const t=document.createElement('span');t.className='no-cover';t.textContent='NO COVER';cover.append(t);}
    const title=document.createElement('div');title.className='title';title.textContent=entry.title;
-   card.append(cover,title);tapCard(entry,card);cards.append(card);
+   playTarget.append(cover,title);
+   tapCard(entry,playTarget);
+   const info=document.createElement('button');
+   info.type='button';info.className='poster-info';info.textContent='ⓘ';
+   info.setAttribute('aria-label',entry.title+' の詳細');
+   info.onclick=()=>showDetails(entry);
+   card.append(playTarget,info);cards.append(card);
  }
  const scrollKey='scroll-'+pathKey(selection)+':'+q+':'+mode;
  cards.scrollTop=resetScroll?0:Number(readState(scrollKey,0))||0;
