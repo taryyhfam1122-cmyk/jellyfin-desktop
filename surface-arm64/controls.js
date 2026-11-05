@@ -248,9 +248,10 @@
         window.__jfdTrickplayPreview?.hide();
     }
     function showSeekOverlay(target,duration) {
-        if(window.__jfdTrickplayPreview?.show(target,duration)!==true)
-            showOverlay('シーク先 '+formatTime(target)+' / 全体 '+formatTime(duration));
-        else if(overlay) overlay.style.display='none';
+        // Keep the exact target/total duration visible even when thumbnail
+        // trickplay previews are available or are still being loaded.
+        window.__jfdTrickplayPreview?.show(target,duration);
+        showOverlay('シーク先 '+formatTime(target)+' / 全体 '+formatTime(duration));
     }
     function baseline() {
         const v = video();
