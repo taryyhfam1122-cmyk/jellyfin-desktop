@@ -237,7 +237,7 @@
         if (!overlay) {
             overlay = document.createElement('div');
             overlay.id = 'jfd-arm64-seek-overlay';
-            overlay.style.cssText = 'position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:2147483640;pointer-events:none;background:#121820da;color:white;border:1px solid #ffffff55;border-radius:12px;padding:15px 28px;font:600 23px system-ui;text-align:center;box-shadow:0 2px 20px #0009';
+            overlay.style.cssText = 'position:fixed;left:50%;top:80%;transform:translate(-50%,-50%);z-index:2147483640;pointer-events:none;background:#0c1520c0;color:#f2f5fb;border:0;border-radius:9px;padding:7px 14px;font:500 15px system-ui;text-align:center;white-space:nowrap;box-shadow:0 1px 8px #0005';
             document.body.appendChild(overlay);
         }
         overlay.textContent = label;
@@ -251,7 +251,7 @@
         // Keep the exact target/total duration visible even when thumbnail
         // trickplay previews are available or are still being loaded.
         window.__jfdTrickplayPreview?.show(target,duration);
-        showOverlay('シーク先 '+formatTime(target)+' / 全体 '+formatTime(duration));
+        showOverlay(formatTime(target)+' / '+formatTime(duration));
     }
     function baseline() {
         const v = video();
