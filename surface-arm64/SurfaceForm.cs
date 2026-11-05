@@ -19,6 +19,7 @@ public sealed class SurfaceForm : Form
     private Uri? _serverUri;
     private OfflineLibrary? _offlineLibrary;
     private bool _offlineVideoExpanded;
+    private bool _onlineVideoActive;
 
     public SurfaceForm()
     {
@@ -88,17 +89,27 @@ public sealed class SurfaceForm : Form
             return;
         }
         _fullscreen = !_fullscreen;
-        _toolbar.Visible = !_fullscreen;
-        // Keep touch-sized native exit/home controls visible even in fullscreen.
-        _fullscreenBar.Visible = _fullscreen;
         FormBorderStyle = _fullscreen ? FormBorderStyle.None : FormBorderStyle.Sizable;
         WindowState = FormWindowState.Maximized;
+        RestoreOnlineBars();
     }
 
     private void RestoreOnlineBars()
     {
+        // Preserve search/home/navigation controls on the library screen.
+        // Only when a video is PLAYING in fullscreen do we hide every chrome
+        // button and cover the Windows taskbar with the borderless window.
+        if (_offlineLibrary?.IsOfflinePage == true) return;
         _toolbar.Visible = !_fullscreen;
-        _fullscreenBar.Visible = _fullscreen;
+        _fullscreenBar.Visible = _fullscreen && !_onlineVideoActive;
+        TopMost = _fullscreen && _onlineVideoActive;
+    }
+
+    private void SetOnlineVideoActive(bool active)
+    {
+        if (_onlineVideoActive == active) return;
+        _onlineVideoActive = active;
+        RestoreOnlineBars();
     }
 
     private void SetOfflineVideoExpanded(bool value)
@@ -113,6 +124,8 @@ public sealed class SurfaceForm : Form
     {
         if (_offlineLibrary is null) return;
         _offlineVideoExpanded = false;
+        _onlineVideoActive = false;
+        TopMost = false;
         _toolbar.Visible = false;
         _fullscreenBar.Visible = false;
         _offlineLibrary.ShowOfflineHome();
@@ -464,6 +477,10 @@ public sealed class SurfaceForm : Form
                                 ToggleFullscreen();
                             else if (command == "open-search")
                                 _ = OpenSearchHubAsync();
+                            else if (command == "online-video-active")
+                                SetOnlineVideoActive(true);
+                            else if (command == "online-video-inactive")
+                                SetOnlineVideoActive(false);
                         }
                         return;
                     }
