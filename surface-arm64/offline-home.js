@@ -28,7 +28,7 @@ function row(node,depth) {
  const b=document.createElement('button');b.className='tree-row'+(pathKey(node.path)===pathKey(selection)?' selected':'');
  b.style.paddingLeft=String(Math.min(55,depth*13)+8)+'px';
  const icon=document.createElement('span');icon.className='folder-icon';const kind=node.path[0]==='JAV'?'jav':node.path[0]==='JAV(1280)'?'jav1280':node.path[0]==='ANIME'?'anime':'';
- icon.classList.add(kind);icon.textContent=node.path.length===0?'⌂':kind==='jav1280'&&node.path.length===1?'HD':kind==='anime'&&node.path.length===1?'▣':kind==='jav'&&node.path.length===1?'▶':node.children.size&&expanded.has(pathKey(node.path))?'▣':'▢';
+ if(kind)icon.classList.add(kind);icon.textContent=node.path.length===0?'⌂':kind==='jav1280'&&node.path.length===1?'HD':kind==='anime'&&node.path.length===1?'▣':kind==='jav'&&node.path.length===1?'▶':node.children.size&&expanded.has(pathKey(node.path))?'▣':'▢';
  const name=document.createElement('span');name.className='name';name.textContent=node.name;
  const count=document.createElement('span');count.className='count';
  count.textContent=records.filter(x=>matches(x,node.path)).length;
