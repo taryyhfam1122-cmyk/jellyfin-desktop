@@ -29,6 +29,7 @@ function loadHome(records) {
         append(...children) { this.children.push(...children); }
         replaceChildren(...children) { this.children = [...children]; }
         addEventListener(name, callback) { this.handlers[name] = callback; }
+        setAttribute(name, value) { this[name] = value; }
         showModal() { this.open = true; }
         close() { this.open = false; }
     }
@@ -79,4 +80,32 @@ test('imported categories render and deletion dialog selects only local file nam
     check.onchange();
     assert.match(elements.get('delete-count').textContent, /1本を選択/);
     assert.equal(messages.length, 0, 'toggling checkboxes never invokes deletion');
+});
+
+test('one click on poster plays immediately, while information button opens details', () => {
+    const items = [
+      {file:'sample.mp4',title:'サンプル作品',folders:['JAV'],cover:'',bytes:30000,saved:123}
+    ];
+    const {elements, messages} = loadHome(items);
+    const poster = elements.get('cards').children[0];
+    assert.equal(poster.className, 'poster');
+    const playArea = poster.children[0];
+    const info = poster.children[1];
+    assert.equal(info.className, 'poster-info');
+    assert.equal(messages.length, 0);
+    playArea.handlers.click();
+    assert.equal(messages.length, 1, 'single click immediately sends one playback action');
+    assert.equal(messages[0].action, 'play');
+    assert.equal(messages[0].file, 'sample.mp4');
+    info.onclick();
+    assert.equal(elements.get('details').open, true, 'info button opens details');
+    assert.equal(messages.length, 1, 'opening details never starts duplicate playback');
+});
+
+test('native desktop manager retains single-click playback and AVI external fallback', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'OfflineLibrary.cs'), 'utf8');
+    assert.match(source, /list\.MouseClick\s*\+=/);
+    assert.match(source, /if \(!launchedPlayback\) ShowOfflineHome\(\)/);
+    assert.match(source, /GetExtension\(path\)\.Equals\("\.avi"/);
+    assert.match(source, /OpenInSystemPlayer\(path\)/);
 });
