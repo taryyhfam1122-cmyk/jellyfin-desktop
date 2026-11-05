@@ -474,7 +474,7 @@ public sealed class SurfaceForm : Form
                         "seek-preview" or "seek-committed" or "seek-error" or
                         "pointer-cancel" or "trickplay-displayed" or "trickplay-unavailable" or
                         "trickplay-error" or "double-tap-home" or "double-tap-search-return" or "top-double-fullscreen" or
-                        "speed-changed" or "speed-error")
+                        "speed-changed" or "speed-error" or "mouse-gesture-start")
                         Log("Touch status: " + name);
                 }
                 catch (JsonException) { }
@@ -493,6 +493,23 @@ public sealed class SurfaceForm : Form
                 {
                     var loaded = await core.ExecuteScriptAsync("Boolean(window.__jfdSurfaceTouchV1)");
                     Log("Touch script injected: " + (loaded == "true" ? "yes" : "no"));
+                    // Jellyfin can redirect or reconstruct its Web SPA after
+                    // document-start registration. Restore the same gestures
+                    // on the chosen server origin if the script was missed.
+                    if (loaded != "true" && _serverUri is not null &&
+                        Uri.TryCreate(core.Source, UriKind.Absolute, out var activePage) &&
+                        activePage.Scheme == _serverUri.Scheme &&
+                        activePage.Authority == _serverUri.Authority)
+                    {
+                        var controls = await File.ReadAllTextAsync(
+                            Path.Combine(AppContext.BaseDirectory, "controls.js"));
+                        controls = controls.Replace("\"__JFD_SERVER_ORIGIN__\"",
+                            JsonSerializer.Serialize(_serverUri.GetLeftPart(UriPartial.Authority)),
+                            StringComparison.Ordinal);
+                        await core.ExecuteScriptAsync(controls);
+                        var restored = await core.ExecuteScriptAsync("Boolean(window.__jfdSurfaceTouchV1)");
+                        Log("Online gesture recovery: " + (restored == "true" ? "yes" : "no"));
+                    }
                     var hub = await core.ExecuteScriptAsync("Boolean(window.__jfdSurfaceSearchHub?.openSearch)");
                     Log("SearchHub bridge loaded: " + (hub == "true" ? "yes" : "no"));
                     if (hub != "true" && _serverUri is not null)
