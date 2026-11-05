@@ -102,12 +102,12 @@ test('one click on poster plays immediately, while information button opens deta
     assert.equal(messages.length, 1, 'opening details never starts duplicate playback');
 });
 
-test('native desktop manager retains single-click playback and AVI external fallback', () => {
+test('native desktop manager uses in-app mpv decoder for AVI', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'OfflineLibrary.cs'), 'utf8');
     assert.match(source, /list\.MouseClick\s*\+=/);
     assert.match(source, /if \(selectionMode \|\| e\.Button != MouseButtons\.Left\) return;/);
     assert.match(source, /選択モード: OFF/);
     assert.match(source, /if \(!launchedPlayback\) ShowOfflineHome\(\)/);
     assert.match(source, /GetExtension\(path\)\.Equals\("\.avi"/);
-    assert.match(source, /OpenInSystemPlayer\(path\)/);
+    assert.match(source, /NativeMpvPlayer\.TryShow\(_browser\.FindForm\(\), path\)/);
 });
