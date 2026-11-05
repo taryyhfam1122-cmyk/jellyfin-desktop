@@ -45,3 +45,10 @@ test('online full screen hides only during playback and restores navigation on l
   assert.match(form,/action: playing \? 'online-video-active' : 'online-video-inactive'/);
   assert.match(form,/setInterval\(refresh, 950\)/);
 });
+
+test('online video can exit hidden-control fullscreen using F11', () => {
+  const controls = read('controls.js');
+  assert.match(controls,/if\(e\.key!=='F11'\)return/);
+  assert.match(controls,/toggleFullscreen\(\)/);
+  assert.match(controls,/stopImmediatePropagation\(\)/);
+});
