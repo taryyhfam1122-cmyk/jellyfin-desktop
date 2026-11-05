@@ -102,12 +102,17 @@ test('one click on poster plays immediately, while information button opens deta
     assert.equal(messages.length, 1, 'opening details never starts duplicate playback');
 });
 
-test('native desktop manager uses in-app mpv decoder for AVI', () => {
+test('all offline video extensions use one embedded native mpv player', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'OfflineLibrary.cs'), 'utf8');
     assert.match(source, /list\.MouseClick\s*\+=/);
     assert.match(source, /if \(selectionMode \|\| e\.Button != MouseButtons\.Left\) return;/);
     assert.match(source, /選択モード: OFF/);
     assert.match(source, /if \(!launchedPlayback\) ShowOfflineHome\(\)/);
-    assert.match(source, /GetExtension\(path\)\.Equals\("\.avi"/);
-    assert.match(source, /NativeMpvPlayer\.TryShow\(_browser\.FindForm\(\), path\)/);
+    assert.match(source, /new\(StringComparer\.OrdinalIgnoreCase\) \{ "\.mp4", "\.mkv", "\.webm", "\.mov", "\.m4v", "\.avi" \}/);
+    const body = source.slice(source.indexOf('private void PlayInApp(string path)'));
+    assert.match(body, /NativeMpvPlayer\.TryShow\(_browser\.FindForm\(\), path\)/);
+    assert.doesNotMatch(body, /GetExtension|\.avi|\.mp4|Process\.Start|_browser\.CoreWebView2\?\.Navigate/);
+    const native = fs.readFileSync(path.join(__dirname, '..', 'NativeMpvPlayer.cs'), 'utf8');
+    assert.match(native, /mpv_initialize\(/);
+    assert.match(native, /mpv_command\(/);
 });
