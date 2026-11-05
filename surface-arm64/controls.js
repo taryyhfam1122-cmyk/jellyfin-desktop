@@ -339,15 +339,19 @@
     }, {capture:true, passive:false});
 
     function endGesture(e, cancelled) {
-        if (e.pointerType !== 'touch' || !fingers.has(e.pointerId)) return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        const isMouse = e.pointerType === 'mouse';
+        if ((e.pointerType !== 'touch' && !isMouse) || !fingers.has(e.pointerId)) return;
+        const handled = !!gesture?.mode && gesture.mode !== 'ignore';
+        if (!isMouse || handled) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
         if (!cancelled && gesture && gesture.v === video()) {
             if (gesture.mode==='seek') {
                 advanceHold(gesture,performance.now());
                 liveSeek(gesture,true);
                 report('seek-committed');
-            } else if (gesture.tap && gesture.count===1) {
+            } else if (!isMouse && gesture.tap && gesture.count===1) {
                 finishTap(gesture);
             }
         }
@@ -357,7 +361,7 @@
         gesture = null;
         hideOverlay();
         if (fingers.size) fingers.clear();
-        suppressClickUntil=performance.now()+350;
+        if (!isMouse || handled) suppressClickUntil=performance.now()+350;
     }
     window.addEventListener('pointerup', e=>{
         if (blockedPointers.delete(e.pointerId)) {
