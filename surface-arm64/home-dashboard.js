@@ -19,13 +19,13 @@
     } catch (_) {}
 
     function visibleVideo() {
-        const overlay=document.querySelector('#videoOsdPage,.videoPlayerContainer');
-        if (overlay && overlay.getClientRects?.().length &&
-            getComputedStyle(overlay).visibility!=='hidden' &&
-            !overlay.classList.contains('hide')) return true;
+        if (/\/(?:video|player)(?:[/?]|$)/i.test(location.hash)) return true;
+        // Jellyfin may keep an empty player container mounted on the home
+        // page. Its existence alone must not hide this custom dashboard.
         return [...document.querySelectorAll('video')].some(v=>{
             const rect=v.getBoundingClientRect();
             return v.isConnected && rect.width>100 && rect.height>100 &&
+                getComputedStyle(v).visibility!=='hidden' &&
                 (v.readyState>0 || (Number.isFinite(v.duration) && v.duration>0));
         });
     }
