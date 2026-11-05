@@ -16,9 +16,9 @@ internal sealed class NativeMpvPlayer : Form
     private const int MpvDouble = 5;
     private IntPtr _mpv;
     private readonly Panel _screen = new() { Dock = DockStyle.Fill, BackColor = Color.Black };
-    private readonly Panel _tools = new() { Dock = DockStyle.Bottom, Height = 112,
+    private readonly Panel _tools = new() { Dock = DockStyle.Bottom, Height = 135,
         BackColor = Color.FromArgb(16, 26, 42) };
-    private readonly TrackBar _seek = new() { Left = 10, Top = 8, Width = 580,
+    private readonly TrackBar _seek = new() { Left = 10, Top = 27, Width = 580,
         Minimum = 0, Maximum = 1000, TickStyle = TickStyle.None };
     private readonly Label _clock = new() { AutoSize = false, Width = 175, Height = 36,
         TextAlign = ContentAlignment.MiddleCenter, ForeColor = Color.White, Text = "0:00 / 0:00" };
@@ -30,6 +30,25 @@ internal sealed class NativeMpvPlayer : Form
     private readonly string _path;
     private bool _scrubbing;
     private bool _ready;
+    private readonly NativeGestureOverlay _gestureOverlay = new();
+    private readonly System.Windows.Forms.Timer _holdTimer = new() { Interval = 200 };
+    private readonly System.Windows.Forms.Timer _tapTimer = new() { Interval = 400 };
+    private readonly Label _hint = new()
+    {
+        Left = 12, Top = 4, Width = 950, Height = 23, ForeColor = Color.FromArgb(156, 206, 247),
+        Font = new Font("Segoe UI", 10), Text = "左右にシーク / 左端で上下: 倍速 / 右端で上下: 音量"
+    };
+    private Point _dragOrigin;
+    private Point _lastTapPoint;
+    private bool _pointerDown;
+    private bool _lastTapTop;
+    private DateTime _lastTapTime;
+    private DateTime _lastSeekUpdate;
+    private DateTime _hintUntil;
+    private OfflineSwipeAction _gestureMode;
+    private double _gestureStartTime, _gestureStartSpeed, _gestureStartVolume;
+    private double _gestureTarget, _gestureDx, _gestureHoldOffset;
+    private bool _isImmersive;
 
     [DllImport("libmpv-2.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr mpv_create();
@@ -108,6 +127,7 @@ internal sealed class NativeMpvPlayer : Form
         _clock.Margin = new Padding(6, 5, 2, 0);
         bar.Controls.AddRange([_back, rewind, _pause, forward, _faster, _volume, _clock]);
         _tools.Controls.Add(_seek);
+        _tools.Controls.Add(_hint);
         _tools.Controls.Add(bar);
         Controls.Add(_screen);
         Controls.Add(_tools);
@@ -129,11 +149,18 @@ internal sealed class NativeMpvPlayer : Form
             var volume = Read("volume", 100);
             Set("volume", volume < 10 ? 100 : Math.Max(0, volume - 10));
         };
-        _screen.MouseWheel += (_, e) =>
-        {
-            var volume = Read("volume", 100);
-            Set("volume", Math.Clamp(volume + (e.Delta > 0 ? 5 : -5), 0, 100));
-        };
+        // libmpv owns the embedded video HWND, so MouseMove on _screen will
+        // not see touch drags. An invisible owned gesture overlay captures them.
+        _gestureOverlay.BeginGesture = BeginGesture;
+        _gestureOverlay.MoveGesture = MoveGesture;
+        _gestureOverlay.EndGesture = EndGesture;
+        _gestureOverlay.WheelGesture = delta => ApplyWheel(delta);
+        _gestureOverlay.PlaybackKey = HandlePlaybackKey;
+        _holdTimer.Tick += (_, _) => AdvanceHeldSeek();
+        _tapTimer.Tick += (_, _) => ProcessSingleTap();
+        _screen.SizeChanged += (_, _) => SyncGestureOverlay();
+        Move += (_, _) => SyncGestureOverlay();
+        Resize += (_, _) => SyncGestureOverlay();
         _seek.MouseDown += (_, _) => _scrubbing = true;
         _seek.MouseUp += (_, _) =>
         {
@@ -144,25 +171,208 @@ internal sealed class NativeMpvPlayer : Form
         _timer.Tick += (_, _) => UpdateControls();
         Shown += (_, _) =>
         {
-            try { StartNative(); }
+            try
+            {
+                StartNative();
+                _gestureOverlay.Bounds = _screen.RectangleToScreen(_screen.ClientRectangle);
+                _gestureOverlay.Show(this);
+                SyncGestureOverlay();
+            }
             catch (Exception ex)
             {
-                MessageBox.Show("動画再生の開始に失敗しました。\\n" + ex.Message,
+                MessageBox.Show("動画再生の開始に失敗しました。\n" + ex.Message,
                     "再生エラー", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 Close();
             }
         };
-        FormClosing += (_, _) => _timer.Stop();
-        FormClosed += (_, _) => StopNative();
+        FormClosing += (_, _) =>
+        {
+            _timer.Stop();
+            _tapTimer.Stop();
+            _holdTimer.Stop();
+            if (!_gestureOverlay.IsDisposed) _gestureOverlay.Close();
+        };
+        FormClosed += (_, _) =>
+        {
+            StopNative();
+            _tapTimer.Dispose();
+            _holdTimer.Dispose();
+            _gestureOverlay.Dispose();
+        };
         KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.Escape) Close();
-            else if (e.KeyCode == Keys.Space) TogglePause();
-            else if (e.KeyCode == Keys.Left) SeekDelta(-10);
-            else if (e.KeyCode == Keys.Right) SeekDelta(10);
-            else return;
-            e.Handled = true; e.SuppressKeyPress = true;
+            if (HandlePlaybackKey(e.KeyCode))
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         };
+    }
+
+
+    private void SyncGestureOverlay()
+    {
+        if (_gestureOverlay.IsDisposed || !_gestureOverlay.Visible ||
+            !_screen.IsHandleCreated || WindowState == FormWindowState.Minimized) return;
+        var bounds = _screen.RectangleToScreen(_screen.ClientRectangle);
+        if (bounds.Width > 0 && bounds.Height > 0 && _gestureOverlay.Bounds != bounds)
+            _gestureOverlay.Bounds = bounds;
+    }
+
+    private void Hint(string message)
+    {
+        _hint.Text = message;
+        _hintUntil = DateTime.UtcNow.AddSeconds(1.2);
+    }
+
+    private void BeginGesture(Point p)
+    {
+        if (!_ready) return;
+        _pointerDown = true;
+        _dragOrigin = p;
+        _gestureMode = OfflineSwipeAction.None;
+        _gestureStartTime = Read("time-pos", 0);
+        _gestureStartSpeed = Read("speed", 1);
+        _gestureStartVolume = Read("volume", 100);
+        _gestureTarget = _gestureStartTime;
+        _gestureDx = 0;
+        _gestureHoldOffset = 0;
+        _lastSeekUpdate = DateTime.MinValue;
+        _holdTimer.Stop();
+    }
+
+    private void MoveGesture(Point p)
+    {
+        if (!_pointerDown || !_ready) return;
+        double dx = p.X - _dragOrigin.X;
+        double dy = p.Y - _dragOrigin.Y;
+        if (_gestureMode == OfflineSwipeAction.None)
+        {
+            _gestureMode = OfflineGestureProfile.Classify(_dragOrigin.X,
+                _gestureOverlay.ClientSize.Width, dx, dy);
+            if (_gestureMode == OfflineSwipeAction.Seek) _holdTimer.Start();
+        }
+        switch (_gestureMode)
+        {
+            case OfflineSwipeAction.Seek:
+                _gestureDx = dx;
+                UpdateSeekTarget();
+                if ((DateTime.UtcNow - _lastSeekUpdate).TotalMilliseconds >= 200)
+                {
+                    Set("time-pos", _gestureTarget);
+                    _lastSeekUpdate = DateTime.UtcNow;
+                }
+                break;
+            case OfflineSwipeAction.Speed:
+                var speed = OfflineGestureProfile.Speed(_gestureStartSpeed, dy);
+                Set("speed", speed);
+                Hint("再生速度 " + speed.ToString("0.00") + "×");
+                break;
+            case OfflineSwipeAction.Volume:
+                var volume = OfflineGestureProfile.Volume(_gestureStartVolume, dy);
+                Set("volume", volume);
+                Hint("音量 " + volume.ToString("0") + "%");
+                break;
+        }
+    }
+
+    private void UpdateSeekTarget()
+    {
+        var duration = Read("duration", 0);
+        if (duration <= 0) return;
+        _gestureTarget = Math.Clamp(_gestureStartTime +
+            OfflineGestureProfile.SeekSeconds(_gestureDx) + _gestureHoldOffset,
+            0, Math.Max(0, duration - 0.05));
+        _clock.Text = Clock(_gestureTarget) + " / " + Clock(duration);
+        Hint("シーク " + Clock(_gestureTarget) + " / " + Clock(duration));
+    }
+
+    private void AdvanceHeldSeek()
+    {
+        if (!_pointerDown || _gestureMode != OfflineSwipeAction.Seek ||
+            Math.Abs(_gestureDx) < 15) return;
+        _gestureHoldOffset += OfflineGestureProfile.SeekSeconds(_gestureDx) * 0.2;
+        UpdateSeekTarget();
+        Set("time-pos", _gestureTarget);
+    }
+
+    private void EndGesture(Point p)
+    {
+        if (!_pointerDown) return;
+        _pointerDown = false;
+        _holdTimer.Stop();
+        if (_gestureMode == OfflineSwipeAction.Seek)
+        {
+            Set("time-pos", _gestureTarget);
+            var duration = Read("duration", 0);
+            Hint("シーク " + Clock(_gestureTarget) + " / " + Clock(duration));
+        }
+        else if (_gestureMode == OfflineSwipeAction.None)
+            RegisterTap(p);
+        _gestureMode = OfflineSwipeAction.None;
+    }
+
+    private void RegisterTap(Point p)
+    {
+        var now = DateTime.UtcNow;
+        var upper = p.Y < _gestureOverlay.ClientSize.Height * 0.25;
+        if (_tapTimer.Enabled &&
+            (now - _lastTapTime).TotalMilliseconds <= 400 &&
+            _lastTapTop == upper &&
+            Math.Abs(_lastTapPoint.X - p.X) < 85 &&
+            Math.Abs(_lastTapPoint.Y - p.Y) < 85)
+        {
+            _tapTimer.Stop();
+            if (upper) ToggleImmersive();
+            else Close(); // stop and return to the same saved library
+            return;
+        }
+        if (_tapTimer.Enabled) ProcessSingleTap();
+        _lastTapPoint = p;
+        _lastTapTop = upper;
+        _lastTapTime = now;
+        _tapTimer.Start();
+    }
+
+    private void ProcessSingleTap()
+    {
+        _tapTimer.Stop();
+        if (_lastTapTop) ToggleControls();
+        else TogglePause();
+    }
+
+    private void ToggleControls()
+    {
+        _tools.Visible = !_tools.Visible;
+        _isImmersive = !_tools.Visible;
+        SyncGestureOverlay();
+    }
+
+    private void ToggleImmersive()
+    {
+        _isImmersive = !_isImmersive;
+        _tools.Visible = !_isImmersive;
+        SyncGestureOverlay();
+    }
+
+    private void ApplyWheel(int delta)
+    {
+        var volume = Math.Clamp(Read("volume", 100) + (delta > 0 ? 5 : -5), 0, 100);
+        Set("volume", volume);
+        Hint("音量 " + volume.ToString("0") + "%");
+    }
+
+    private bool HandlePlaybackKey(Keys key)
+    {
+        switch (key)
+        {
+            case Keys.Escape: Close(); return true;
+            case Keys.Space: TogglePause(); return true;
+            case Keys.Left: SeekDelta(-10); return true;
+            case Keys.Right: SeekDelta(10); return true;
+            case Keys.F11: ToggleImmersive(); return true;
+            default: return false;
+        }
     }
 
     private void StartNative()
@@ -259,7 +469,10 @@ internal sealed class NativeMpvPlayer : Form
         var pos = Read("time-pos", 0);
         if (!_scrubbing && duration > 0)
             _seek.Value = Math.Clamp((int)(1000 * pos / duration), 0, 1000);
-        _clock.Text = Clock(pos) + " / " + Clock(duration);
+        if (!(_pointerDown && _gestureMode == OfflineSwipeAction.Seek))
+            _clock.Text = Clock(pos) + " / " + Clock(duration);
+        if (DateTime.UtcNow > _hintUntil)
+            _hint.Text = "左右にシーク / 左端で上下: 倍速 / 右端で上下: 音量";
         _faster.Text = "速度 " + Read("speed", 1).ToString("0.00") + "×";
         _volume.Text = "音量 " + Read("volume", 100).ToString("0") + "%";
     }
