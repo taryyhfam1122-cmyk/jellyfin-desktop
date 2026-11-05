@@ -103,8 +103,29 @@ public sealed class SurfaceForm : Form
             ? Color.FromArgb(179, 111, 237) : Color.FromArgb(67, 88, 119);
         b.FlatAppearance.MouseOverBackColor = selected
             ? Color.FromArgb(135, 68, 211) : Color.FromArgb(52, 72, 102);
+        // Rounded corners keep the native taskbar visually consistent
+        // with the Jellyfin C02 dashboard's modern dark design.
+        b.Resize += (_, _) => SetRoundedRegion(b, 10);
+        SetRoundedRegion(b, 10);
         b.Click += (_, _) => action();
         return b;
+    }
+
+    private static void SetRoundedRegion(Control control, int radius)
+    {
+        var width = control.Width;
+        var height = control.Height;
+        if (width <= 2 || height <= 2) return;
+        var d = Math.Min(radius * 2, Math.Min(width - 1, height - 1));
+        using var path = new System.Drawing.Drawing2D.GraphicsPath();
+        path.AddArc(0, 0, d, d, 180, 90);
+        path.AddArc(width - d - 1, 0, d, d, 270, 90);
+        path.AddArc(width - d - 1, height - d - 1, d, d, 0, 90);
+        path.AddArc(0, height - d - 1, d, d, 90, 90);
+        path.CloseFigure();
+        var previous = control.Region;
+        control.Region = new Region(path);
+        previous?.Dispose();
     }
 
     private void ToggleFullscreen()
