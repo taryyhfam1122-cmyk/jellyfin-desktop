@@ -68,12 +68,16 @@ public sealed class SurfaceForm : Form
         // The WebView2 itself still renders Jellyfin's ORIGINAL home, libraries,
         // resume row, favorites, item details and playback.
         _sidebar = new NativeLibrarySidebar(
-            NavigateHomeDirect,
+            () => _ = GoHomeFromSidebarAsync(),
             () => _ = OpenSearchHubAsync(),
             OpenSaved,
             () => _offlineLibrary?.ShowDownloadManager(),
             () => _ = LoadNativeLibrariesAsync(force: true),
-            library => _ = OpenNativeLibraryAsync(library));
+            library => _ = OpenNativeLibraryAsync(library),
+            tab => _ = SelectSearchTabAsync(tab),
+            () => _ = SearchHubActionAsync("back"),
+            () => _ = SearchHubActionAsync("close"),
+            action => _ = SearchHubActionAsync(action));
         _sidebar.Visible = false;
         // If the first attempt happens before Jellyfin's authentication
         // client is ready, retry until an actual library list is received.
@@ -350,6 +354,46 @@ public sealed class SurfaceForm : Form
         }
     }
 
+    private async Task GoHomeFromSidebarAsync()
+    {
+        await SearchHubActionAsync("close", updateSidebar: false);
+        _sidebar.SetMode(C02SidebarMode.Library);
+        NavigateHomeDirect();
+    }
+
+    private async Task SelectSearchTabAsync(string tab)
+    {
+        if (tab is not ("persons" or "series" or "genres")) return;
+        _sidebar.SetMode(C02SidebarMode.Search);
+        var script = "window.__jfdSurfaceSearchHub?.selectTab?.(" +
+            JsonSerializer.Serialize(tab) + ")";
+        try
+        {
+            if (_browser.CoreWebView2 is not null)
+                await _browser.CoreWebView2.ExecuteScriptAsync(script);
+        }
+        catch (Exception ex) { Log("Search category change: " + ex.GetType().Name); }
+    }
+
+    private async Task SearchHubActionAsync(string action, bool updateSidebar = true)
+    {
+        if (action is not ("close" or "back" or "top" or "bottom")) return;
+        var script = action switch
+        {
+            "close" => "window.__jfdSurfaceSearchHub?.closeSearch?.()",
+            "back" => "window.__jfdSurfaceSearchHub?.handleBack?.()",
+            "top" => "document.querySelector('#jfsh-v1')?.scrollTo({top:0,behavior:'smooth'})",
+            _ => "(()=>{const x=document.querySelector('#jfsh-v1');if(x)x.scrollTo({top:x.scrollHeight,behavior:'smooth'});})()"
+        };
+        try
+        {
+            if (_browser.CoreWebView2 is not null)
+                await _browser.CoreWebView2.ExecuteScriptAsync(script);
+            if (action == "close" && updateSidebar) _sidebar.SetMode(C02SidebarMode.Library);
+        }
+        catch (Exception ex) { Log("Search navigation action: " + ex.GetType().Name); }
+    }
+
     private async Task BackPreservingSearchAsync()
     {
         var core = _browser.CoreWebView2;
@@ -534,6 +578,20 @@ public sealed class SurfaceForm : Form
                     if (type.GetString() == "jfd-native-libraries")
                     {
                         AcceptNativeLibraries(root);
+                        return;
+                    }
+                    if (type.GetString() == "jfd-sidebar-state")
+                    {
+                        var mode = root.TryGetProperty("mode", out var state) ?
+                            state.GetString() : null;
+                        if (mode == "search")
+                        {
+                            _sidebar.SetMode(C02SidebarMode.Search);
+                            if (root.TryGetProperty("tab", out var tab))
+                                _sidebar.SetSearchTab(tab.GetString() ?? "");
+                        }
+                        else if (mode == "library")
+                            _sidebar.SetMode(C02SidebarMode.Library);
                         return;
                     }
                     if (type.GetString() == "jfd-cover-image")
