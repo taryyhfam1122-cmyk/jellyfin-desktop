@@ -22,8 +22,6 @@
     <None Update="online-jacket-capture.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="offline-home.js" CopyToOutputDirectory="PreserveNewest" />
     <None Update="offline-home.html" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="home-dashboard.js" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="home-dashboard.css" CopyToOutputDirectory="PreserveNewest" />
     <None Update="offline-player.html" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
