@@ -192,7 +192,7 @@ internal sealed class NativeMpvPlayer : Form
                 allocated.Add(ptr);
                 return ptr;
             }).Concat([IntPtr.Zero]).ToArray();
-            var buffer = Marshal.AllocHGlobal(pointers.Length * IntPtr.Size);
+            var buffer = Marshal.AllocCoTaskMem(pointers.Length * IntPtr.Size);
             allocated.Add(buffer);
             Marshal.Copy(pointers, 0, buffer, pointers.Length);
             mpv_command(_mpv, buffer);
