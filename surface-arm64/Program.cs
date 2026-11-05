@@ -38,6 +38,9 @@ internal static class Program
             catch { return 5; }
         }
 
+        if (args.Contains("--self-test-native-gestures", StringComparer.OrdinalIgnoreCase))
+            return OfflineGestureProfile.SelfTest() ? 0 : 6;
+
         ApplicationConfiguration.Initialize();
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.Run(new SurfaceForm());
