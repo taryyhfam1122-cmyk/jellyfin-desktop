@@ -5,7 +5,7 @@
   --jfd-text:#f2f6ff; --jfd-muted:#9daec9; --jfd-accent:#a653ed;
   --jfd-accent2:#5b80ff; --jfd-border:#33425d;
   position:fixed!important;inset:0!important;z-index:2147483500!important;
-  display:flex!important;overflow:hidden!important;
+  display:flex;overflow:hidden!important;
   box-sizing:border-box!important;background:var(--jfd-bg)!important;
   color:var(--jfd-text)!important;font-family:Segoe UI,"Yu Gothic UI",sans-serif!important;
   isolation:isolate!important;
