@@ -518,3 +518,39 @@ test('SearchHub gesture targets cannot be interpreted as home fullscreen double-
     }
     assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,0);
 });
+
+test('desktop online Jellyfin mouse horizontal drag seeks and shows target time',()=>{
+    const h=harness();
+    h.dispatch('pointerdown',{pointerType:'mouse',pointerId:52,button:0,buttons:1,clientX:500,clientY:350});
+    h.dispatch('pointermove',{pointerType:'mouse',pointerId:52,button:-1,buttons:1,clientX:600,clientY:350});
+    assert.deepEqual(h.seeks,[180]);
+    assert.match(h.overlayLabel(),/シーク先 3:00 \/ 全体 10:00/);
+    h.dispatch('pointerup',{pointerType:'mouse',pointerId:52,button:0,buttons:0,clientX:600,clientY:350});
+    assert.equal(h.activeTimers(),0);
+});
+test('desktop online Jellyfin right edge mouse drag changes volume',()=>{
+    const h=harness();
+    h.dispatch('pointerdown',{pointerType:'mouse',pointerId:53,button:0,buttons:1,clientX:1100,clientY:350});
+    h.dispatch('pointermove',{pointerType:'mouse',pointerId:53,button:-1,buttons:1,clientX:1100,clientY:200});
+    assert.ok(h.video.volume>0.5);
+    assert.equal(h.seeks.length,0);
+    h.dispatch('pointerup',{pointerType:'mouse',pointerId:53,button:0,buttons:0,clientX:1100,clientY:200});
+    assert.equal(h.activeTimers(),0);
+});
+test('desktop online Jellyfin left edge mouse drag changes speed by 0.05 steps',()=>{
+    const h=harness();
+    h.dispatch('pointerdown',{pointerType:'mouse',pointerId:54,button:0,buttons:1,clientX:100,clientY:350});
+    h.dispatch('pointermove',{pointerType:'mouse',pointerId:54,button:-1,buttons:1,clientX:100,clientY:300});
+    assert.equal(h.video.playbackRate,1.05);
+    h.dispatch('pointerup',{pointerType:'mouse',pointerId:54,button:0,buttons:0,clientX:100,clientY:300});
+    assert.equal(h.activeTimers(),0);
+});
+test('ordinary online left mouse click remains Jellyfin native click',()=>{
+    const h=harness();
+    const down=h.dispatch('pointerdown',{pointerType:'mouse',pointerId:55,button:0,buttons:1,clientX:500,clientY:350});
+    const up=h.dispatch('pointerup',{pointerType:'mouse',pointerId:55,button:0,buttons:0,clientX:500,clientY:350});
+    assert.equal(down.defaultPrevented,false);
+    assert.equal(up.defaultPrevented,false);
+    assert.equal(h.pauses(),0);
+    assert.equal(h.activeTimers(),0);
+});
