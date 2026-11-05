@@ -602,45 +602,11 @@ internal sealed class OfflineLibrary
         _browser.CoreWebView2?.Navigate(new Uri(_homePage).AbsoluteUri);
     }
 
-    private void OpenInSystemPlayer(string path)
-    {
-        try
-        {
-            if (!File.Exists(path)) return;
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            _log("External video player failed: " + ex.GetType().Name);
-            MessageBox.Show(
-                "この動画をWindowsの既定プレーヤーで開けませんでした。\\nAVI対応の動画プレーヤーを設定してください。",
-                "AVI再生を確認", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-    }
-
     private void PlayInApp(string path)
     {
-        // AVI is handled inside this application by libmpv, the same playback
-        // engine family as the main Jellyfin Desktop Qt app. The original local
-        // file and its sidecars remain untouched. MP4 keeps the verified WebView2
-        // playback gestures until the native player is validated on Surface.
-        if (Path.GetExtension(path).Equals(".avi", StringComparison.OrdinalIgnoreCase))
-        {
-            NativeMpvPlayer.TryShow(_browser.FindForm(), path);
-            return;
-        }
-        // Playback runs from a file:// page, never from the Jellyfin origin.
-        // Touch gestures and the custom progress bar live in offline-controls.js.
-        var safeUrl = WebUtility.HtmlEncode(new Uri(path).AbsoluteUri);
-        var safeName = WebUtility.HtmlEncode(Path.GetFileName(path));
-        var script = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "offline-controls.js"));
-        var html = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "offline-player.html"));
-        // Trusted script is inserted before untrusted filenames/paths are HTML-encoded.
-        html = html.Replace("__JFD_SCRIPT__", script, StringComparison.Ordinal)
-            .Replace("__JFD_TITLE__", safeName, StringComparison.Ordinal)
-            .Replace("__JFD_FILE__", safeUrl, StringComparison.Ordinal);
-        File.WriteAllText(_playerPage, html, Encoding.UTF8);
-        _offlinePage = true;
-        _browser.CoreWebView2?.Navigate(new Uri(_playerPage).AbsoluteUri);
+        // All downloaded/local video formats use the SAME embedded libmpv
+        // playback UI, transport controls, keyboard shortcuts and return path.
+        // Never branch on the file extension or open another media player.
+        NativeMpvPlayer.TryShow(_browser.FindForm(), path);
     }
 }
