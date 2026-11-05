@@ -268,12 +268,18 @@ internal sealed class OfflineLibrary
             return button;
         }
         string? SelectedPath() => list.SelectedItems.Count == 1 ? list.SelectedItems[0].Tag as string : null;
+        bool launchedPlayback = false;
+        void PlayPath(string path)
+        {
+            if (launchedPlayback || !File.Exists(path)) return;
+            launchedPlayback = true;
+            form.Close();
+            PlayInApp(path);
+        }
         void Play()
         {
             var path = SelectedPath();
-            if (path is null || !File.Exists(path)) return;
-            form.Close();
-            PlayInApp(path);
+            if (path is not null) PlayPath(path);
         }
         void External()
         {
@@ -359,9 +365,16 @@ internal sealed class OfflineLibrary
         commands.Controls.Add(MakeButton("閉じる", form.Close));
         form.Controls.Add(list);
         form.Controls.Add(commands);
-        list.DoubleClick += (_, _) => Play();
+        // Mouse click is the primary gesture: a work plays immediately.
+        // Selection remains available via the bottom management commands.
+        list.MouseClick += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left) return;
+            if (list.GetItemAt(e.X, e.Y)?.Tag is string path) PlayPath(path);
+        };
         form.ShowDialog();
-        ShowOfflineHome();
+        // Do not navigate back to the library after launching the video!
+        if (!launchedPlayback) ShowOfflineHome();
     }
 
     private static readonly HashSet<string> VideoExtensions =
@@ -579,8 +592,31 @@ internal sealed class OfflineLibrary
         _browser.CoreWebView2?.Navigate(new Uri(_homePage).AbsoluteUri);
     }
 
+    private void OpenInSystemPlayer(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            _log("External video player failed: " + ex.GetType().Name);
+            MessageBox.Show(
+                "この動画をWindowsの既定プレーヤーで開けませんでした。\\nAVI対応の動画プレーヤーを設定してください。",
+                "AVI再生を確認", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
     private void PlayInApp(string path)
     {
+        // Chromium WebView2 does not reliably decode AVI containers. Use the
+        // Windows-associated player without converting or changing the local file.
+        if (Path.GetExtension(path).Equals(".avi", StringComparison.OrdinalIgnoreCase))
+        {
+            OpenInSystemPlayer(path);
+            return;
+        }
         // Playback runs from a file:// page, never from the Jellyfin origin.
         // Touch gestures and the custom progress bar live in offline-controls.js.
         var safeUrl = WebUtility.HtmlEncode(new Uri(path).AbsoluteUri);
