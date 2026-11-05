@@ -827,10 +827,11 @@ public sealed class SurfaceForm : Form
                     JsonSerializer.Serialize(_server.Text), StringComparison.Ordinal));
             var preview = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "trickplay-preview.js"));
             var searchHub = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "searchhub.js"));
-            // Do not inject home-dashboard.js. The original Jellyfin web home
-            // renders the existing resume, recent, favorite and library rows.
+            var tidy = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "c02-home-tidy.js"));
+            // Keep the original Jellyfin home, hide only the duplicated
+            // My Media cards and floating search launchers.
             var source = preview + "\n" + await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "controls.js")) +
-                "\n" + searchHub;
+                "\n" + searchHub + "\n" + tidy;
             source = source.Replace("\"__JFD_SERVER_ORIGIN__\"", JsonSerializer.Serialize(_server.Text), StringComparison.Ordinal);
             _scriptId = await _browser.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(source);
             _browser.CoreWebView2.Navigate(new Uri(server, "/web/").ToString());
