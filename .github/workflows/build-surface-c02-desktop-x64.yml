@@ -40,6 +40,7 @@ jobs:
           node --test surface-arm64/tests/preview-runtime.test.cjs
           node --test surface-arm64/tests/searchhub-position.test.cjs
           node --test surface-arm64/tests/searchhub-navigation.test.cjs
+          node --test surface-arm64/tests/offline-home-smoke.test.cjs
       - name: Publish C02 Windows desktop x64
         run: |
           $ErrorActionPreference = 'Stop'
