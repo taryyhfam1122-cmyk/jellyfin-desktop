@@ -12,7 +12,7 @@ public sealed class SurfaceForm : Form
     private readonly FlowLayoutPanel _toolbar = new() { Dock = DockStyle.Top, Height = 64, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(25, 29, 36), Padding = new Padding(4) };
     private readonly FlowLayoutPanel _fullscreenBar = new() { Dock = DockStyle.Top, Height = 64, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, BackColor = Color.FromArgb(23, 28, 35), Padding = new Padding(3), Visible = false };
     private readonly TextBox _server = new() { Width = 400, Font = new Font("Segoe UI", 11), PlaceholderText = "http://NAS-IP:30013" };
-    private readonly string _appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JellyfinSurfaceARM64");
+    private readonly string _appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JellyfinSurfaceC02Desktop");
     private bool _fullscreen;
     private string? _scriptId;
     private string? _nativeSearchScriptId;
@@ -22,7 +22,7 @@ public sealed class SurfaceForm : Form
 
     public SurfaceForm()
     {
-        Text = "Jellyfin Surface ARM64";
+        Text = "Jellyfin Offline C02 - Desktop x64";
         MinimumSize = new Size(640, 400);
         WindowState = FormWindowState.Maximized;
         BackColor = Color.Black;
