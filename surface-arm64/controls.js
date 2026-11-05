@@ -302,6 +302,7 @@
         }
         fingers.set(e.pointerId, {x:e.clientX, y:e.clientY});
         baseline();
+        if (e.pointerType === 'mouse') report('mouse-gesture-start');
         try { e.target?.setPointerCapture?.(e.pointerId); } catch (_) {}
     }, {capture:true, passive:false});
 
