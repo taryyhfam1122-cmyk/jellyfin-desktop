@@ -18,6 +18,7 @@ internal sealed class OfflineLibrary
     private readonly string _playerPage;
     private readonly string _homePage;
     private readonly HashSet<string> _activeDownloads = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CoreWebView2DownloadOperation> _downloadOperations = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Guid, List<string>> _coverDestinations = [];
     private readonly Dictionary<Guid, byte[]> _capturedCoverImages = [];
     private Uri? _serverOrigin;
@@ -35,6 +36,7 @@ internal sealed class OfflineLibrary
     private sealed class OfflineVideoMeta
     {
         public string Title { get; set; } = "";
+        public string ItemId { get; set; } = "";
         public string[] Folders { get; set; } = [];
     }
     private readonly Dictionary<Guid, OfflineVideoMeta> _capturedMeta = [];
@@ -57,7 +59,7 @@ internal sealed class OfflineLibrary
                     folders.Add(clean);
             }
         }
-        var meta = new OfflineVideoMeta { Title = title, Folders = folders.ToArray() };
+        var meta = new OfflineVideoMeta { Title = title, ItemId = id.ToString("N"), Folders = folders.ToArray() };
         _capturedMeta[id] = meta;
         if (_capturedMeta.Count > 40) _capturedMeta.Remove(_capturedMeta.Keys.First());
         if (_coverDestinations.TryGetValue(id, out var paths))
@@ -178,6 +180,7 @@ internal sealed class OfflineLibrary
             }
             var partial = destination + ".jfdpartial";
             _activeDownloads.Add(destination);
+            _downloadOperations[destination] = e.DownloadOperation;
             e.ResultFilePath = partial;
             e.Handled = true; // Suppress the default browser download dialog.
             _log("Offline download started in application storage");
@@ -186,13 +189,15 @@ internal sealed class OfflineLibrary
                 var state = e.DownloadOperation.State;
                 if (state == CoreWebView2DownloadState.InProgress) return;
                 _activeDownloads.Remove(destination);
+                _downloadOperations.Remove(destination);
                 try
                 {
                     if (state == CoreWebView2DownloadState.Completed && File.Exists(partial))
                     {
                         File.Move(partial, destination);
-                        if (itemId is Guid metaId && _capturedMeta.TryGetValue(metaId, out var info))
-                            SaveMeta(destination, info);
+                        if (itemId is Guid metaId)
+                            SaveMeta(destination, _capturedMeta.TryGetValue(metaId, out var info)
+                                ? info : new OfflineVideoMeta { ItemId = metaId.ToString("N") });
                         _log("Offline download completed and saved");
                         if (itemId is Guid coverId &&
                             _capturedCoverImages.TryGetValue(coverId, out var coverBytes))
@@ -399,6 +404,136 @@ internal sealed class OfflineLibrary
             if (File.Exists(path + ".jfd-meta.json")) File.Delete(path + ".jfd-meta.json");
         }
         catch (Exception ex) { _log("Offline deletion failed: " + ex.GetType().Name); }
+        ShowOfflineHome();
+    }
+
+    public bool ConfirmClose()
+    {
+        if (_activeDownloads.Count == 0) return true;
+        return MessageBox.Show(
+            "ダウンロード中の動画が " + _activeDownloads.Count + " 件あります。中断してアプリを終了しますか？",
+            "ダウンロード中", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+    }
+
+    public void ShowDownloadManager()
+    {
+        using var form = new Form {
+            Text = "Jellyfin ダウンロード管理",
+            Width = 740, Height = 460, MinimumSize = new Size(570, 350),
+            BackColor = Color.FromArgb(19, 27, 39), ForeColor = Color.White,
+            StartPosition = FormStartPosition.CenterParent
+        };
+        var list = new ListView {
+            Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true,
+            MultiSelect = false, BackColor = Color.FromArgb(27, 39, 55),
+            ForeColor = Color.White, Font = new Font("Segoe UI", 10)
+        };
+        list.Columns.Add("動画", 225);
+        list.Columns.Add("状態", 85);
+        list.Columns.Add("進捗", 90);
+        list.Columns.Add("受信 / 合計", 230);
+        var buttons = new FlowLayoutPanel {
+            Dock = DockStyle.Bottom, Height = 56, Padding = new Padding(8)
+        };
+        var cancel = new Button { Text = "選択したダウンロードを中止", Width = 235, Height = 38,
+            BackColor = Color.FromArgb(100, 49, 61), ForeColor = Color.White };
+        var close = new Button { Text = "閉じる", Width = 110, Height = 38,
+            BackColor = Color.FromArgb(51, 66, 84), ForeColor = Color.White };
+        cancel.Click += (_, _) => {
+            if (list.SelectedItems.Count != 1) return;
+            var key = list.SelectedItems[0].Tag as string;
+            if (key is null || !_downloadOperations.TryGetValue(key, out var op)) return;
+            if (MessageBox.Show(form, "選択したダウンロードを中止しますか？",
+                    "ダウンロード中止", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                op.Cancel();
+        };
+        close.Click += (_, _) => form.Close();
+        buttons.Controls.Add(cancel);
+        buttons.Controls.Add(close);
+        form.Controls.Add(list);
+        form.Controls.Add(buttons);
+        void Refresh()
+        {
+            var previous = list.SelectedItems.Count == 1 ? list.SelectedItems[0].Tag as string : null;
+            list.BeginUpdate();
+            try {
+                list.Items.Clear();
+                foreach (var pair in _downloadOperations.ToArray())
+                {
+                    var op = pair.Value;
+                    var total = op.TotalBytesToReceive;
+                    var received = op.BytesReceived;
+                    var percent = total.HasValue && total.Value > 0 ? (100d * received / total.Value).ToString("N0") + "%" : "不明";
+                    var size = (received / 1048576d).ToString("N1") + " MB / " +
+                        (total.HasValue && total.Value > 0 ? (total.Value / 1048576d).ToString("N1") + " MB" : "不明");
+                    var row = new ListViewItem(Path.GetFileName(pair.Key)) { Tag = pair.Key };
+                    row.SubItems.Add(op.State.ToString());
+                    row.SubItems.Add(percent);
+                    row.SubItems.Add(size);
+                    list.Items.Add(row);
+                    if (string.Equals(previous, pair.Key, StringComparison.OrdinalIgnoreCase))
+                        row.Selected = true;
+                }
+                if (list.Items.Count == 0) list.Items.Add(new ListViewItem("現在ダウンロード中の動画はありません"));
+            } finally { list.EndUpdate(); }
+        }
+        using var timer = new System.Windows.Forms.Timer { Interval = 600 };
+        timer.Tick += (_, _) => Refresh();
+        form.Shown += (_, _) => { Refresh(); timer.Start(); };
+        form.FormClosing += (_, _) => timer.Stop();
+        form.ShowDialog(_browser.FindForm());
+    }
+
+    public void ReportDownloads()
+    {
+        if (_browser.CoreWebView2 is null || !_offlinePage) return;
+        var rows = _downloadOperations.Select(pair =>
+        {
+            var op = pair.Value;
+            var total = op.TotalBytesToReceive;
+            var received = op.BytesReceived;
+            return new
+            {
+                name = Path.GetFileName(pair.Key),
+                state = op.State.ToString(),
+                received,
+                total,
+                percent = total.HasValue && total.Value > 0 ? 100d * received / total.Value : -1d
+            };
+        }).ToArray();
+        var json = JsonSerializer.Serialize(rows);
+        _ = _browser.CoreWebView2.ExecuteScriptAsync("window.jfdSetDownloads?.(" + json + ")");
+    }
+
+    public void DeleteMany(JsonElement root)
+    {
+        if (!root.TryGetProperty("files", out var field) || field.ValueKind != JsonValueKind.Array) return;
+        var names = field.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.String)
+            .Select(x => x.GetString())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(2000).ToList();
+        var paths = names.Select(ResolveFile).Where(x => x is not null)
+            .Select(x => x!).Where(x => !_activeDownloads.Contains(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (paths.Count == 0) return;
+        var bytes = paths.Sum(path => new FileInfo(path).Length);
+        var reply = MessageBox.Show(
+            "Surface内の動画 " + paths.Count + " 本（" + (bytes / 1073741824d).ToString("N2") +
+            " GB）を削除します。NAS上の元ファイルは変更されません。\n\n元に戻せません。実行しますか？",
+            "選択した動画を削除", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (reply != DialogResult.Yes) return;
+        var failed = 0;
+        foreach (var path in paths)
+        {
+            try
+            {
+                File.Delete(path);
+                if (File.Exists(OfflineJackets.CoverPath(path))) File.Delete(OfflineJackets.CoverPath(path));
+                if (File.Exists(path + ".jfd-meta.json")) File.Delete(path + ".jfd-meta.json");
+            }
+            catch (Exception ex) { failed++; _log("Offline batch deletion failed: " + ex.GetType().Name); }
+        }
+        if (failed > 0) MessageBox.Show(failed + " 本を削除できませんでした。", "削除結果");
         ShowOfflineHome();
     }
 

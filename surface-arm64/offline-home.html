@@ -29,10 +29,31 @@ dialog{max-width:min(590px,92vw);width:100%;background:#172232;border:1px solid 
 dialog::backdrop{background:#000b}dialog h2{font-size:19px;margin:0 0 8px}dialog .buttons{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
 #empty{color:var(--muted);padding:34px;font-size:16px;grid-column:1/-1}
 @media(max-width:710px){header h1{font-size:17px}aside{width:37%;min-width:125px;padding:5px}#cards{grid-template-columns:repeat(auto-fill,minmax(105px,1fr));padding:8px;gap:9px}.tree-row{padding:7px 3px;font-size:12px}.toolbar{padding:6px}}
+
+/* C02 touch-friendly folder icons and management controls */
+.tree-row .folder-icon{display:inline-flex;align-items:center;justify-content:center;width:31px;height:30px;border:1px solid #56728f;border-radius:8px;background:#2c4057;color:#d9e8ff;font-size:16px;flex:none}
+.tree-row .folder-icon.jav{background:#34475d;border-color:#59738f}
+.tree-row .folder-icon.jav1280{background:#47356d;border-color:#7464a5}
+.tree-row .folder-icon.anime{background:#16577b;border-color:#3c8eb5}
+.tree-row.selected .folder-icon{box-shadow:0 0 0 1px #89c6ff}
+#exit{background:#344055;border:1px solid #7c6274;color:#ffd6de;min-width:70px}
+#exit .power{font-size:20px;display:block;line-height:21px}
+#delete-dialog{max-height:88vh;overflow:auto}
+#delete-list{max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:5px;margin-top:10px}
+#delete-list label{min-height:43px;padding:8px;display:flex;gap:12px;align-items:center;border:1px solid #354a61;border-radius:9px;background:#202d3e}
+#delete-list input{width:23px;height:23px;flex:none;accent-color:#67b2f8}
+#delete-list .sub{margin-left:24px}
+#delete-list .group{background:#243f59;font-weight:600}
+#delete-dialog .danger{background:#8b3544;border-color:#c46e78}
+#download-panel{max-height:55vh;overflow:auto}
+.progress{height:10px;background:#32465d;border-radius:99px;overflow:hidden;margin:6px 0}
+.progress>span{display:block;height:100%;background:#5fa9f6}
+.muted{color:#9eb0c4}
+
 </style></head>
 <body>
 <header><div><h1>Jellyfin Offline</h1><div class="hint">通信なしでも保存した動画を再生できます</div></div>
-<div class="actions"><button id="manage">保存管理</button><button id="online">オンラインへ戻る</button></div></header>
+<div class="actions"><button id="downloads">↓ 進捗</button><button id="batch-delete">選択削除</button><button id="manage">保存管理</button><button id="online">オンラインへ戻る</button><button id="exit" aria-label="アプリを終了"><span class="power">⏻</span><span style="font-size:11px">終了</span></button></div></header>
 <div class="toolbar"><input type="search" id="search" placeholder="保存済み作品を検索" autocomplete="off" aria-label="保存済み作品を検索">
 <select id="sort" aria-label="並び替え"><option value="saved">保存順（新しい順）</option><option value="name">作品名順</option><option value="size">容量順</option></select></div>
 <main><aside><div class="label">フォルダ</div><div id="tree"></div></aside>
@@ -40,5 +61,9 @@ dialog::backdrop{background:#000b}dialog h2{font-size:19px;margin:0 0 8px}dialog
 <footer id="summary">保存済み作品のみ表示 / NAS上の元ファイルは変更されません</footer>
 <dialog id="details"><h2 id="detail-title"></h2><div id="detail-path" class="hint"></div><div id="detail-size" class="hint"></div>
 <div class="buttons"><button id="detail-play">▶ 再生</button><button id="detail-cover">ジャケット変更</button><button id="detail-delete">保存動画を削除</button><button id="detail-close">閉じる</button></div></dialog>
+<dialog id="delete-dialog"><h2>保存済み動画の選択削除</h2><p class="hint">フォルダを選ぶと、その配下の保存済み動画のみが対象です。NASの元動画は削除されません。</p>
+<div class="buttons"><button id="delete-all">すべて選択</button><button id="delete-none">選択解除</button></div><div id="delete-list"></div><p id="delete-count" class="hint"></p>
+<div class="buttons"><button id="delete-confirm" class="danger">選択したファイルを削除</button><button id="delete-close">戻る</button></div></dialog>
+<dialog id="download-dialog"><h2>ダウンロード進捗</h2><div id="download-panel">実行中のダウンロードはありません。</div><div class="buttons"><button id="download-refresh">更新</button><button id="download-close">閉じる</button></div></dialog>
 <script id="jfd-offline-data" type="application/json">__JFD_ITEMS__</script>
 <script>__JFD_SCRIPT__</script></body></html>

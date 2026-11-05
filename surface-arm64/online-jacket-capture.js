@@ -24,6 +24,7 @@
             }
             // Store only title/folder names. The access token stays inside the
             // authenticated WebView and is NEVER included in the native message.
+            const parents=[];
             try {
                 const details = new URL('/Items/' + itemId, location.origin);
                 details.searchParams.set('Fields', 'Path');
@@ -33,6 +34,9 @@
                 });
                 if (infoResponse.ok) {
                     const item = await infoResponse.json();
+                    for(const candidate of [item.SeasonId,item.SeriesId]){
+                        if(typeof candidate==='string'&&/^[0-9a-f-]{32,36}$/i.test(candidate)&&!parents.includes(candidate))parents.push(candidate);
+                    }
                     const parts = typeof item.Path === 'string'
                         ? item.Path.replace(/\\/g, '/').split('/').filter(Boolean) : [];
                     const rootIndex = parts.findIndex(p =>
@@ -46,17 +50,30 @@
                 }
             } catch (_) { /* No metadata: file remains visible under 未分類. */ }
 
-            const url = new URL('/Items/' + itemId + '/Images/Primary', location.origin);
-            url.searchParams.set('maxWidth', '480');
-            url.searchParams.set('quality', '80');
-            url.searchParams.set('format', 'Jpg');
-            const response = await fetch(url.href, {
-                credentials: 'same-origin',
-                headers: token ? { 'X-Emby-Token': token } : {}
-            });
-            if (!response.ok) return;
-            const blob = await response.blob();
-            if (blob.size < 200 || blob.size > 2_000_000 || !blob.type.startsWith('image/')) return;
+            // Episodes often have no Primary image; use verified Jellyfin SeasonId/SeriesId.
+            // This uses only actual Jellyfin relationships, never inferred filename matches.
+            let blob=null;
+            const sources=[itemId,...parents];
+            for(const candidate of sources){
+                for(const kind of ['Primary','Thumb']){
+                    try{
+                        const url=new URL('/Items/'+candidate+'/Images/'+kind,location.origin);
+                        url.searchParams.set('maxWidth','480');
+                        url.searchParams.set('quality','80');
+                        url.searchParams.set('format','Jpg');
+                        const response=await fetch(url.href,{
+                            credentials:'same-origin',
+                            headers:token?{'X-Emby-Token':token}:{}
+                        });
+                        if(!response.ok)continue;
+                        const next=await response.blob();
+                        if(next.size<200||next.size>2_000_000||!next.type.startsWith('image/'))continue;
+                        blob=next;break;
+                    }catch(_){/* Try the next image type. */}
+                }
+                if(blob)break;
+            }
+            if(!blob)return;
             const dataUrl = await new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve(reader.result);
