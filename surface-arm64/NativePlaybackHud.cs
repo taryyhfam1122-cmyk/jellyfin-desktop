@@ -14,8 +14,8 @@ internal sealed class NativePlaybackHud : Form
         Dock = DockStyle.Fill,
         ForeColor = Color.White,
         TextAlign = ContentAlignment.MiddleCenter,
-        Font = new Font("Segoe UI", 19, FontStyle.Bold),
-        BackColor = Color.FromArgb(22, 37, 56)
+        Font = new Font("Segoe UI", 13, FontStyle.Regular),
+        BackColor = Color.FromArgb(12, 21, 32)
     };
 
     protected override bool ShowWithoutActivation => true;
@@ -38,9 +38,9 @@ internal sealed class NativePlaybackHud : Form
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         BackColor = Color.FromArgb(22, 37, 56);
-        Opacity = 0.92;
-        Width = 500;
-        Height = 92;
+        Opacity = 0.73;
+        Width = 292;
+        Height = 42;
         Controls.Add(_label);
     }
 
@@ -49,7 +49,8 @@ internal sealed class NativePlaybackHud : Form
         _label.Text = value;
         if (videoBounds.Width == 0 || videoBounds.Height == 0) return;
         var x = videoBounds.Left + (videoBounds.Width - Width) / 2;
-        var y = videoBounds.Top + (videoBounds.Height - Height) * 2 / 5;
+        // Bottom-center avoids faces, subtitles and the central viewing area.
+        var y = videoBounds.Top + (int)(videoBounds.Height * 0.80) - Height / 2;
         Location = new Point(x, y);
     }
 }
