@@ -477,6 +477,10 @@ public sealed class SurfaceForm : Form
                                 ToggleFullscreen();
                             else if (command == "open-search")
                                 _ = OpenSearchHubAsync();
+                            else if (command == "open-saved")
+                                OpenSaved();
+                            else if (command == "open-progress")
+                                _offlineLibrary?.ShowDownloadManager();
                             else if (command == "online-video-active")
                                 SetOnlineVideoActive(true);
                             else if (command == "online-video-inactive")
