@@ -248,9 +248,8 @@
         window.__jfdTrickplayPreview?.hide();
     }
     function showSeekOverlay(target,duration) {
-        // Keep the exact target/total duration visible even when thumbnail
-        // trickplay previews are available or are still being loaded.
-        window.__jfdTrickplayPreview?.show(target,duration);
+        // Exactly one unobtrusive time pill: avoid stacking Jellyfin's
+        // trickplay preview label and this gesture overlay.
         showOverlay(formatTime(target)+' / '+formatTime(duration));
     }
     function baseline() {
@@ -512,6 +511,21 @@
             e.preventDefault(); e.stopImmediatePropagation();
         }
     },true);
+    // Desktop mouse double-click follows the same online gestures as
+    // Surface's touch double-tap. Do not intercept buttons, seekbars,
+    // SearchHub or ordinary single clicks.
+    window.addEventListener('dblclick', e => {
+        if (e.button !== 0) return;
+        const v = video();
+        if (!v || !inVideoArea(e, v)) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (e.clientY < innerHeight * TOP_FULLSCREEN_FRACTION)
+            toggleFullscreen();
+        else
+            closeVideoHome(v);
+    }, {capture:true});
+
     // Home/library only: double tap on empty content toggles native fullscreen.
     // Never intercept a single tap, scrolling, navigation controls or playback.
     let homeStart=null, homeLastTap=null, homeLastEvent=null;
