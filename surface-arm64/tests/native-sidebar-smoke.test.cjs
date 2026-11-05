@@ -37,7 +37,10 @@ test('video still hides top bar and sidebar, and saving videos cannot change NAS
     assert.match(form,/!_onlineVideoActive && _offlineLibrary\?\.IsOfflinePage != true/);
     assert.match(form,/_fullscreenBar\.Visible = _fullscreen && !_onlineVideoActive/);
     assert.match(form,/NativeLibrarySidebar\.RouteFor\(library\.CollectionType\)/);
-    assert.match(form,/url\.searchParams\.get\('topParentId'\) === id/);
+    assert.match(form,/__jfdC02NativeLibrary\?\.navigate/);
+    assert.match(form,/jellyfin-fallback-route/);
+    assert.match(form,/route === 'homevideos'/);
+    assert.match(sidebar,/RouteFor\("mixed"\) == "mixed"/);
     assert.match(offline,/NativeMpvPlayer\.TryShow\(/);
 });
 
@@ -51,3 +54,22 @@ test('native sidebar uses only Jellyfin Views API and does not collect credentia
     assert.doesNotMatch(query,/AccessToken|ApiKey|Authorization|password|api_key/);
     assert.doesNotMatch(sidebar,/File\.Delete|File\.Move|HttpClient/);
 });
+test('two-stage sidebar shows context search and library panes',()=>{
+  const side=read('NativeLibrarySidebar.cs');
+  const form=read('SurfaceForm.cs');
+  const hub=read('searchhub.js');
+  assert.match(side,/enum C02SidebarMode \{ Library, Search \}/);
+  assert.match(side,/private const int RailWidth = 66/);
+  assert.match(side,/private const int DetailWidth = 212/);
+  assert.match(side,/private void AddSearch\(string tab/);
+  for(const tab of ['persons','series','genres'])
+    assert.ok(hub.includes(tab));
+  assert.match(side,/SetMode\(C02SidebarMode mode\)/);
+  assert.match(form,/command == "online-library-active"/);
+  assert.match(form,/jfd-sidebar-state/);
+  assert.match(hub,/reportSidebar\('search'\)/);
+  assert.match(hub,/reportSidebar\('library'\)/);
+  assert.match(hub,/selectTab\(tab\)/);
+  assert.match(form,/SearchHubActionAsync\("close"/);
+});
+
