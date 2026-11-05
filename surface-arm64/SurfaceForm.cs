@@ -547,6 +547,21 @@ public sealed class SurfaceForm : Form
                                 OpenSaved();
                             else if (command == "open-progress")
                                 _offlineLibrary?.ShowDownloadManager();
+                            else if (command == "online-library-active")
+                            {
+                                if (!_onlineLibraryReady)
+                                {
+                                    _onlineLibraryReady = true;
+                                    RestoreOnlineBars();
+                                }
+                                _ = LoadNativeLibrariesAsync();
+                            }
+                            else if (command == "online-library-inactive")
+                            {
+                                _onlineLibraryReady = false;
+                                _loadedLibrariesFor = "";
+                                RestoreOnlineBars();
+                            }
                             else if (command == "online-video-active")
                                 SetOnlineVideoActive(true);
                             else if (command == "online-video-inactive")
@@ -642,6 +657,9 @@ public sealed class SurfaceForm : Form
         try
         {
             _serverUri = server;
+            _onlineLibraryReady = false;
+            _loadedLibrariesFor = "";
+            _sidebar.Visible = false;
             _offlineLibrary?.SetServer(server);
             _offlineLibrary?.EnterServer();
             _offlineVideoExpanded = false;
@@ -665,6 +683,7 @@ public sealed class SurfaceForm : Form
                     window.__jfdSurfaceSearchEntryV27 = true;
                     const ID = 'jfd-surface-search-entry-v27';
                     let lastVideoActive = null;
+                    let lastLibraryReady = null;
                     function refresh() {
                         if (!document.body) return;
                         let btn = document.getElementById(ID);
@@ -700,12 +719,27 @@ public sealed class SurfaceForm : Form
                                 action: playing ? 'online-video-active' : 'online-video-inactive'
                             });
                         }
+                        // The native sidebar appears only after a Jellyfin user
+                        // signs in. Do not show it over login or video playback.
+                        let authenticated = false;
+                        try { authenticated = Boolean(window.ApiClient?.getCurrentUserId?.()); }
+                        catch (_) {}
+                        if (authenticated !== lastLibraryReady) {
+                            lastLibraryReady = authenticated;
+                            window.chrome?.webview?.postMessage({
+                                type:'jfd-player-action',
+                                action:authenticated ? 'online-library-active' : 'online-library-inactive'
+                            });
+                        }
                         const open = !!document.getElementById('jfsh-v1');
                         const legacy = document.getElementById('jfsh-launch');
                         const legacyVisible = !!legacy && legacy.getClientRects().length > 0 &&
                             getComputedStyle(legacy).display !== 'none';
                         const loggingIn = ['/login', '/selectserver', '/startupwizard'].some(route => location.hash.includes(route));
-                        btn.style.display = (playing || open || legacyVisible || loggingIn) ? 'none' : '';
+                        // Search now has a permanent sidebar entry, so the
+                        // old floating launcher must not duplicate it.
+                        btn.style.display = (authenticated || playing || open ||
+                            legacyVisible || loggingIn) ? 'none' : '';
                     }
                     refresh();
                     document.addEventListener('DOMContentLoaded', refresh, {once:true});
