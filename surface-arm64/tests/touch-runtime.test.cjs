@@ -554,3 +554,22 @@ test('ordinary online left mouse click remains Jellyfin native click',()=>{
     assert.equal(h.pauses(),0);
     assert.equal(h.activeTimers(),0);
 });
+
+test('C02 online desktop double-click below upper quarter stops and returns home',()=>{
+    const h=harness();
+    h.dispatch('dblclick',{button:0,clientX:500,clientY:350});
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,1);
+    assert.equal(h.pauses(),1);
+});
+test('C02 online desktop double-click in top quarter switches fullscreen',()=>{
+    const h=harness();
+    h.dispatch('dblclick',{button:0,clientX:500,clientY:100});
+    assert.equal(h.messages.filter(m=>m.action==='toggle-fullscreen').length,1);
+    assert.equal(h.messages.filter(m=>m.action==='stop-home').length,0);
+});
+test('C02 online seek time is never shown by two separate overlay systems',()=>{
+    const s=fs.readFileSync(path.join(__dirname,'..','controls.js'),'utf8');
+    const part=s.slice(s.indexOf('function showSeekOverlay('),s.indexOf('function baseline()'));
+    assert.match(part,/showOverlay\(formatTime\(target\)\+' \/ '\+formatTime\(duration\)\)/);
+    assert.doesNotMatch(part,/__jfdTrickplayPreview\?\.show/);
+});
