@@ -357,7 +357,16 @@ internal sealed class OfflineLibrary
             if (OfflineJackets.HasCover(path)) File.Delete(OfflineJackets.CoverPath(path));
             list.Items.Remove(list.SelectedItems[0]);
         }
-        commands.Controls.Add(MakeButton("アプリ内で再生", Play));
+        bool selectionMode = false;
+        var selectMode = MakeButton("選択モード: OFF", () => { });
+        selectMode.Click += (_, _) =>
+        {
+            selectionMode = !selectionMode;
+            selectMode.Text = selectionMode ? "選択モード: ON" : "選択モード: OFF";
+            selectMode.BackColor = selectionMode
+                ? Color.FromArgb(27, 107, 159) : Color.FromArgb(48, 62, 78);
+        };
+        commands.Controls.Add(selectMode);
         commands.Controls.Add(MakeButton("外部プレーヤー", External));
         commands.Controls.Add(MakeButton("動画を取り込む", Import));
         commands.Controls.Add(MakeButton("ジャケット選択", SetCover));
@@ -365,13 +374,14 @@ internal sealed class OfflineLibrary
         commands.Controls.Add(MakeButton("閉じる", form.Close));
         form.Controls.Add(list);
         form.Controls.Add(commands);
-        // Mouse click is the primary gesture: a work plays immediately.
-        // Selection remains available via the bottom management commands.
+        // Default: click immediately plays. Selection mode keeps the existing
+        // cover-edit, external-play and local-delete commands accessible.
         list.MouseClick += (_, e) =>
         {
-            if (e.Button != MouseButtons.Left) return;
+            if (selectionMode || e.Button != MouseButtons.Left) return;
             if (list.GetItemAt(e.X, e.Y)?.Tag is string path) PlayPath(path);
         };
+        list.DoubleClick += (_, _) => { if (selectionMode) Play(); };
         form.ShowDialog();
         // Do not navigate back to the library after launching the video!
         if (!launchedPlayback) ShowOfflineHome();
