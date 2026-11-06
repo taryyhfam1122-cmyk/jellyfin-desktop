@@ -73,3 +73,12 @@ test('two-stage sidebar shows context search and library panes',()=>{
   assert.match(form,/SearchHubActionAsync\("close"/);
 });
 
+
+test('new build identification stays visible even with unchanged local user profile',()=>{
+ const f=read('SurfaceForm.cs');
+ const sidebar=read('NativeLibrarySidebar.cs');
+ assert.match(f,/Jellyfin C02 \[B-2STAGE BUILD\]/);
+ assert.match(f,/◇ C02 · B 2段式/);
+ assert.match(sidebar,/B版 · ライブラリ/);
+ assert.match(sidebar,/B版 · 検索一覧/);
+});
