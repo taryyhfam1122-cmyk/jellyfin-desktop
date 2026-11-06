@@ -38,7 +38,7 @@ public sealed class SurfaceForm : Form
 
     public SurfaceForm()
     {
-        Text = "Jellyfin Offline C02 - Desktop x64";
+        Text = "Jellyfin C02 [B-2STAGE BUILD] - Desktop x64";
         MinimumSize = new Size(640, 400);
         WindowState = FormWindowState.Maximized;
         BackColor = Color.Black;
@@ -105,8 +105,8 @@ public sealed class SurfaceForm : Form
 
     private static Label Brand() => new()
     {
-        Text = "◇ Jellyfin C02",
-        Width = 158, Height = 44,
+        Text = "◇ C02 · B 2段式",
+        Width = 194, Height = 44,
         ForeColor = Color.FromArgb(244, 242, 255),
         BackColor = Color.FromArgb(12, 19, 32),
         TextAlign = ContentAlignment.MiddleCenter,
