@@ -100,6 +100,20 @@ jobs:
             throw 'Playback must use the same native UI for every supported extension'
           }
           'PASS: native x64 runtime and offline assets. Full UI and Jellyfin require desktop testing.' | Set-Content publish-x64/validation.txt
+      - name: Label preview and include correct-folder launcher
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item surface-arm64/Start_C02_B_2stage.cmd publish-x64/Start_C02_B_2stage.cmd
+          @'
+          Jellyfin C02 B-2STAGE [IDENTIFICATION BUILD]
+          Window title must read: Jellyfin C02 [B-2STAGE BUILD] - Desktop x64
+          Top toolbar must read: C02 B 2段式
+          Native left panel title must read: B版 · ライブラリ
+          This build is for desktop x64 only. Test Surface ARM64 separately.
+          Close ALL existing C02 windows before starting this exe.
+          Use a FRESH folder; do not merge with older app files.
+          '@ | Set-Content -Encoding utf8 publish-x64/THIS_IS_B_2STAGE.txt
+          if (!(Test-Path publish-x64/Start_C02_B_2stage.cmd)) { throw 'B version launcher missing' }
       - uses: actions/upload-artifact@v4
         with:
           name: jellyfin-surface-c02-two-stage-sidebar-desktop-x64
