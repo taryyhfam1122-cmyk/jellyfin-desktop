@@ -199,7 +199,8 @@ internal sealed class NativeLibrarySidebar : Panel
     {
         if (IsDisposed) return;
         _mode = mode;
-        _paneTitle.Text = mode == C02SidebarMode.Search ? "検索一覧" : "ライブラリ";
+        _paneTitle.Text = mode == C02SidebarMode.Search ?
+            "B版 · 検索一覧" : "B版 · ライブラリ";
         _libraryRows.Visible = mode == C02SidebarMode.Library;
         _searchRows.Visible = mode == C02SidebarMode.Search;
         foreach (var pair in _railButtons)
